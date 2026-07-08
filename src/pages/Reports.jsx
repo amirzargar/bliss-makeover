@@ -25,47 +25,45 @@ export default function Reports() {
     const [topServices, setTopServices] = useState([])
     const [paymentMix, setPaymentMix] = useState([])
     const [tierDist, setTierDist] = useState([])
-    const [summary, setSummary] = useState({})
+    const [summary, setSummary] = useState({ totalRevenue: 0, totalDiscount: 0, avgBill: 0, txnCount: 0, newCustomers: 0 })
     const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7))
 
     useEffect(() => { fetchReports() }, [selectedMonth])
 
     async function fetchReports() {
         setLoading(true)
-        const monthStart = selectedMonth + '-01T00:00:00'
-        const monthEnd = new Date(new Date(monthStart).setMonth(
-            new Date(monthStart).getMonth() + 1
-        )).toISOString()
+
+        const monthStart = `${selectedMonth}-01T00:00:00`
+        const [year, month] = selectedMonth.split('-').map(Number)
+        const nextMonthStr = month === 12 ? `${year + 1}-01` : `${year}-${String(month + 1).padStart(2, '0')}`
+        const monthEnd = `${nextMonthStr}-01T00:00:00`
+
+        const historyDate = new Date()
+        historyDate.setMonth(historyDate.getMonth() - 5)
+        const historyStart = historyDate.toISOString().slice(0, 7) + '-01T00:00:00'
 
         const [txns, allTxns, appts, staff, customers, commissions] = await Promise.all([
-            // This month's transactions
             supabase.from('transactions')
                 .select('total, discount_amount, payment_mode, created_at, customers(name)')
                 .gte('created_at', monthStart)
                 .lt('created_at', monthEnd)
                 .order('created_at'),
 
-            // Last 6 months transactions for trend
             supabase.from('transactions')
                 .select('total, created_at')
-                .gte('created_at', new Date(new Date().setMonth(new Date().getMonth() - 5))
-                    .toISOString().slice(0, 7) + '-01T00:00:00')
+                .gte('created_at', historyStart)
                 .order('created_at'),
 
-            // This month's completed appointments
             supabase.from('appointments')
                 .select('staff_id, service_id, amount, services(name, category), users(name)')
                 .eq('status', 'completed')
                 .gte('scheduled_at', monthStart)
                 .lt('scheduled_at', monthEnd),
 
-            // All staff
             supabase.from('users').select('id, name, commission_rate').eq('is_active', true),
 
-            // Customer tier distribution
             supabase.from('customers').select('loyalty_tier, total_visits, created_at'),
 
-            // Commission this month
             supabase.from('commission_log')
                 .select('staff_id, commission_earned, users(name)')
                 .eq('month', selectedMonth),
@@ -75,8 +73,7 @@ export default function Reports() {
         const apptData = appts.data || []
         const custData = customers.data || []
 
-        //  Summary stats 
-        const totalRevenue = txnData.reduce((s, t) => s + Number(t.total), 0)
+        const totalRevenue = txnData.reduce((s, t) => s + Number(t.total || 0), 0)
         const totalDiscount = txnData.reduce((s, t) => s + Number(t.discount_amount || 0), 0)
         const avgBill = txnData.length ? totalRevenue / txnData.length : 0
         const newCustomers = custData.filter(c =>
@@ -85,11 +82,11 @@ export default function Reports() {
 
         setSummary({ totalRevenue, totalDiscount, avgBill, txnCount: txnData.length, newCustomers })
 
-        //    Monthly revenue trend (last 6 months)   
         const revByMonth = {}
             ; (allTxns.data || []).forEach(t => {
+                if (!t.created_at) return
                 const m = t.created_at.slice(0, 7)
-                revByMonth[m] = (revByMonth[m] || 0) + Number(t.total)
+                revByMonth[m] = (revByMonth[m] || 0) + Number(t.total || 0)
             })
         const trend = Object.entries(revByMonth)
             .sort(([a], [b]) => a.localeCompare(b))
@@ -99,11 +96,10 @@ export default function Reports() {
             }))
         setMonthlyRev(trend)
 
-        //    Top services   
         const svcMap = {}
         apptData.forEach(a => {
             const name = a.services?.name || 'Unknown'
-            if (!svcMap[name]) svcMap[name] = { name, count: 0, revenue: 0, category: a.services?.category }
+            if (!svcMap[name]) svcMap[name] = { name, count: 0, revenue: 0, category: a.services?.category || 'General' }
             svcMap[name].count++
             svcMap[name].revenue += Number(a.amount || 0)
         })
@@ -113,31 +109,28 @@ export default function Reports() {
                 .slice(0, 6)
         )
 
-        //    Staff performance   
         const staffMap = {}
         apptData.forEach(a => {
             const name = a.users?.name || 'Unassigned'
             const id = a.staff_id || 'unassigned'
-            if (!staffMap[id]) staffMap[id] = { name, services: 0, revenue: 0 }
+            if (!staffMap[id]) staffMap[id] = { name, services: 0, revenue: 0, commission: 0 }
             staffMap[id].services++
             staffMap[id].revenue += Number(a.amount || 0)
         })
-            // Add commission data
             ; (commissions.data || []).forEach(c => {
                 const id = c.staff_id
                 if (staffMap[id]) {
-                    staffMap[id].commission = Number(c.commission_earned)
+                    staffMap[id].commission = Number(c.commission_earned || 0)
                 }
             })
         setStaffPerf(
-            Object.values(staffMap)
-                .sort((a, b) => b.revenue - a.revenue)
+            Object.values(staffMap).sort((a, b) => b.revenue - a.revenue)
         )
 
-        //    Payment method mix   
         const pmMap = {}
         txnData.forEach(t => {
-            pmMap[t.payment_mode] = (pmMap[t.payment_mode] || 0) + Number(t.total)
+            if (!t.payment_mode) return
+            pmMap[t.payment_mode] = (pmMap[t.payment_mode] || 0) + Number(t.total || 0)
         })
         setPaymentMix(
             Object.entries(pmMap).map(([name, value]) => ({
@@ -146,9 +139,8 @@ export default function Reports() {
             }))
         )
 
-        //    Customer tier distribution   
         const tierMap = { basic: 0, silver: 0, gold: 0, platinum: 0 }
-        custData.forEach(c => { if (tierMap[c.loyalty_tier] !== undefined) tierMap[c.loyalty_tier]++ })
+        custData.forEach(c => { if (c.loyalty_tier && tierMap[c.loyalty_tier] !== undefined) tierMap[c.loyalty_tier]++ })
         setTierDist(
             Object.entries(tierMap).map(([name, value]) => ({
                 name: name.charAt(0).toUpperCase() + name.slice(1),
@@ -164,11 +156,11 @@ export default function Reports() {
             ['Bliss Makeover - Monthly Report', selectedMonth],
             [],
             ['SUMMARY'],
-            ['Total Revenue', `Rs.${summary.totalRevenue?.toLocaleString('en-IN')}`],
-            ['Total Transactions', summary.txnCount],
-            ['Average Bill', `Rs.${Math.round(summary.avgBill)?.toLocaleString('en-IN')}`],
-            ['Total Discounts Given', `Rs.${summary.totalDiscount?.toLocaleString('en-IN')}`],
-            ['New Customers', summary.newCustomers],
+            ['Total Revenue', `Rs.${(summary.totalRevenue ?? 0).toLocaleString('en-IN')}`],
+            ['Total Transactions', summary.txnCount ?? 0],
+            ['Average Bill', `Rs.${Math.round(summary.avgBill ?? 0).toLocaleString('en-IN')}`],
+            ['Total Discounts Given', `Rs.${(summary.totalDiscount ?? 0).toLocaleString('en-IN')}`],
+            ['New Customers', summary.newCustomers ?? 0],
             [],
             ['TOP SERVICES'],
             ['Service', 'Times Done', 'Revenue'],
@@ -198,7 +190,6 @@ export default function Reports() {
 
     return (
         <div className="space-y-5">
-
             {/* Header */}
             <div className="flex items-center justify-between">
                 <div>
@@ -220,24 +211,24 @@ export default function Reports() {
             <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
                 <StatCard
                     label="Total revenue"
-                    value={`Rs.${Math.round(summary.totalRevenue).toLocaleString('en-IN')}`}
-                    sub={`${summary.txnCount} transactions`}
+                    value={`Rs.${Math.round(summary.totalRevenue ?? 0).toLocaleString('en-IN')}`}
+                    sub={`${summary.txnCount ?? 0} transactions`}
                     color="text-pink-700" />
                 <StatCard
                     label="Average bill"
-                    value={`Rs.${Math.round(summary.avgBill).toLocaleString('en-IN')}`}
+                    value={`Rs.${Math.round(summary.avgBill ?? 0).toLocaleString('en-IN')}`}
                     sub="per transaction" />
                 <StatCard
                     label="Discounts given"
-                    value={`Rs.${Math.round(summary.totalDiscount).toLocaleString('en-IN')}`}
+                    value={`Rs.${Math.round(summary.totalDiscount ?? 0).toLocaleString('en-IN')}`}
                     sub="total savings to customers" />
                 <StatCard
                     label="New customers"
-                    value={summary.newCustomers}
+                    value={summary.newCustomers ?? 0}
                     sub="joined this month" />
                 <StatCard
                     label="Services done"
-                    value={staffPerf.reduce((s, st) => s + st.services, 0)}
+                    value={staffPerf.reduce((s, st) => s + (st.services ?? 0), 0)}
                     sub="completed appointments" />
             </div>
 
@@ -405,7 +396,7 @@ export default function Reports() {
                 )}
             </div>
 
-            {/* Customer tier distribution */}
+            {/* Customer loyalty distribution */}
             <div className="bg-white rounded-xl border border-gray-100 p-4">
                 <h2 className="text-sm font-semibold text-gray-700 mb-4">Customer loyalty distribution</h2>
                 <div className="grid grid-cols-4 gap-3">
@@ -424,7 +415,6 @@ export default function Reports() {
                     ))}
                 </div>
             </div>
-
         </div>
     )
 }

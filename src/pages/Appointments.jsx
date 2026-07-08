@@ -39,9 +39,9 @@ export default function Appointments() {
         setLoading(true)
         const [appts, custs, stf, svcs] = await Promise.all([
             supabase.from('appointments').select(`
-        *, customers(id,name,phone,loyalty_points,total_visits,total_spent),
-        users(name), services(name,category,duration_mins)
-      `).gte('scheduled_at', dateFilter + 'T00:00:00')
+                *, customers(id,name,phone,loyalty_points,total_visits,total_spent),
+                users(name), services(name,category,duration_mins)
+            `).gte('scheduled_at', dateFilter + 'T00:00:00')
                 .lte('scheduled_at', dateFilter + 'T23:59:59')
                 .order('scheduled_at'),
             supabase.from('customers').select('id,name,phone').order('name'),
@@ -102,7 +102,7 @@ export default function Appointments() {
 
     return (
         <div>
-            {/* Header  */}
+            {/* Header */}
             <div className="flex items-center justify-between mb-6">
                 <div>
                     <h1 className="text-xl font-semibold text-gray-800">Appointments</h1>
@@ -119,7 +119,7 @@ export default function Appointments() {
                 </div>
             </div>
 
-            {/* List  */}
+            {/* List */}
             {loading ? (
                 <div className="text-center text-gray-400 py-12">Loading...</div>
             ) : appointments.length === 0 ? (
@@ -169,7 +169,7 @@ export default function Appointments() {
                 </div>
             )}
 
-            {/* Book Appointment Modal  */}
+            {/* Book Appointment Modal */}
             {showForm && (
                 <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
                     <div className="bg-white rounded-2xl w-full max-w-md p-6 max-h-[90vh] overflow-y-auto">
@@ -239,7 +239,7 @@ export default function Appointments() {
                             )}
                         </div>
 
-                        {/*Service */}
+                        {/* Service */}
                         <div className="mb-4">
                             <label className="text-xs font-medium text-gray-500 mb-1 block">Service</label>
                             <select value={form.service_id} onChange={e => onServiceChange(e.target.value)}
@@ -270,7 +270,7 @@ export default function Appointments() {
                             </select>
                         </div>
 
-                        {/* Date & Time  */}
+                        {/* Date & Time */}
                         <div className="mb-4">
                             <label className="text-xs font-medium text-gray-500 mb-1 block">Date & Time</label>
                             <input type="datetime-local" value={form.scheduled_at}
@@ -278,7 +278,7 @@ export default function Appointments() {
                                 className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-pink-300" />
                         </div>
 
-                        {/* Notes*/}
+                        {/* Notes */}
                         <div className="mb-5">
                             <label className="text-xs font-medium text-gray-500 mb-1 block">Notes (optional)</label>
                             <textarea value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
@@ -300,15 +300,14 @@ export default function Appointments() {
                 </div>
             )}
 
-            {/*Checkout Modal */}
-              {showCheckout && (
+            {/* Checkout Modal */}
+            {showCheckout && (
                 <CheckoutModal
                     appointment={showCheckout}
                     onClose={() => setShowCheckout(null)}
                     onDone={() => { setShowCheckout(null); fetchAll() }}
                 />
-              )
-            }
+            )}
         </div>
     )
 }
@@ -401,7 +400,6 @@ function CheckoutModal({ appointment: a, onClose, onDone }) {
             }
         }
 
-        // 3. Log commission for staff
         // 3. Log commission for staff
         if (a.staff_id) {
             const { data: staffData, error: staffErr } = await supabase

@@ -28,11 +28,16 @@ export default function Offers() {
 
     async function fetchOffers() {
         setLoading(true)
-        const { data } = await supabase
+        const { data, error } = await supabase
             .from('offers')
             .select('*')
             .order('created_at', { ascending: false })
-        setOffers(data || [])
+
+        if (error) {
+            alert('Failed to load offers. Please try again.')
+        } else {
+            setOffers(data || [])
+        }
         setLoading(false)
     }
 
@@ -42,35 +47,48 @@ export default function Offers() {
         if (!form.start_date) return alert('Enter start date')
         if (!form.end_date) return alert('Enter end date')
         if (form.end_date < form.start_date) return alert('End date must be after start date')
+
         setSaving(true)
         const payload = {
             ...form,
             discount_value: Number(form.discount_value),
             min_bill: Number(form.min_bill || 0),
             max_uses: form.max_uses ? Number(form.max_uses) : null,
-            promo_code: form.promo_code.trim().toUpperCase() || null,
+            promo_code: form.promo_code?.trim().toUpperCase() || null,
         }
-        if (editing) {
-            await supabase.from('offers').update(payload).eq('id', editing)
-        } else {
-            await supabase.from('offers').insert(payload)
-        }
+
+        const { error } = editing
+            ? await supabase.from('offers').update(payload).eq('id', editing)
+            : await supabase.from('offers').insert(payload)
+
         setSaving(false)
-        setShowForm(false)
-        setForm(empty)
-        setEditing(null)
-        fetchOffers()
+        if (error) {
+            alert(`Error saving offer: ${error.message}`)
+        } else {
+            setShowForm(false)
+            setForm(empty)
+            setEditing(null)
+            fetchOffers()
+        }
     }
 
     async function toggleActive(id, current) {
-        await supabase.from('offers').update({ is_active: !current }).eq('id', id)
-        fetchOffers()
+        const { error } = await supabase.from('offers').update({ is_active: !current }).eq('id', id)
+        if (error) {
+            alert('Could not update status. Please try again.')
+        } else {
+            fetchOffers()
+        }
     }
 
     async function deleteOffer(id) {
         if (!confirm('Delete this offer?')) return
-        await supabase.from('offers').delete().eq('id', id)
-        fetchOffers()
+        const { error } = await supabase.from('offers').delete().eq('id', id)
+        if (error) {
+            alert('Could not delete offer.')
+        } else {
+            fetchOffers()
+        }
     }
 
     function startEdit(o) {
@@ -114,7 +132,6 @@ export default function Offers() {
 
     return (
         <div>
-
             {/* Header */}
             <div className="flex items-center justify-between mb-5">
                 <div>
@@ -151,8 +168,8 @@ export default function Offers() {
                 {['all', 'active', 'upcoming', 'expired'].map(f => (
                     <button key={f} onClick={() => setFilter(f)}
                         className={`px-3 py-1.5 rounded-full text-xs font-medium capitalize transition-colors ${filter === f
-                                ? 'bg-pink-600 text-white'
-                                : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                            ? 'bg-pink-600 text-white'
+                            : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
                             }`}>
                         {f}
                     </button>
@@ -386,7 +403,6 @@ export default function Offers() {
                     </div>
                 </div>
             )}
-
         </div>
     )
 }

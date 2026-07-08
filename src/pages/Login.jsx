@@ -1,52 +1,63 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { useAuthStore } from '../store/authStore'
+import { supabase } from '../lib/supabase'
 
 export default function Login() {
     const [email, setEmail] = useState('')
     const [password, setPassword] = useState('')
-    const [error, setError] = useState('')
     const [loading, setLoading] = useState(false)
-    const signIn = useAuthStore(s => s.signIn)
-    const navigate = useNavigate()
 
-    const handleSubmit = async (e) => {
+    async function handleLogin(e) {
         e.preventDefault()
+        if (!email.trim() || !password) return alert('Please fill in all fields')
+
         setLoading(true)
-        setError('')
-        const { error } = await signIn(email, password)
+        const { error } = await supabase.auth.signInWithPassword({
+            email: email.trim(),
+            password: password
+        })
+
         if (error) {
-            setError(error.message)
-            setLoading(false)
-        } else {
-            navigate('/')
+            alert(`Authentication failed: ${error.message}`)
         }
+        setLoading(false)
     }
 
     return (
-        <div className="min-h-screen flex items-center justify-center bg-pink-50">
-            <div className="bg-white rounded-2xl shadow-sm border border-pink-100 p-8 w-full max-w-sm">
-                <div className="text-center mb-8">
-                    <div className="text-3xl font-semibold text-pink-700 mb-1">Bliss Makeover</div>
-                    <div className="text-sm text-gray-400">Salon Management</div>
+        <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+            <div className="bg-white p-8 rounded-2xl shadow-sm border border-gray-100 max-w-md w-full">
+                <div className="text-center mb-6">
+                    <h1 className="text-2xl font-bold text-gray-800">Bliss Makeover</h1>
+                    <p className="text-sm text-gray-400 mt-1">Sign in to manage your salon</p>
                 </div>
-                <form onSubmit={handleSubmit} className="space-y-4">
+                <form onSubmit={handleLogin} className="space-y-4">
                     <div>
-                        <label className="block text-sm text-gray-500 mb-1">Email</label>
-                        <input type="email" value={email} onChange={e => setEmail(e.target.value)}
+                        <label className="text-xs text-gray-500 mb-1 block">Email Address</label>
+                        <input
+                            type="email"
+                            value={email}
+                            onChange={e => setEmail(e.target.value)}
+                            placeholder="admin@bliss.com"
                             className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-pink-300"
-                            placeholder="you@example.com" required />
+                            required
+                        />
                     </div>
                     <div>
-                        <label className="block text-sm text-gray-500 mb-1">Password</label>
-                        <input type="password" value={password} onChange={e => setPassword(e.target.value)}
+                        <label className="text-xs text-gray-500 mb-1 block">Password</label>
+                        <input
+                            type="password"
+                            value={password}
+                            onChange={e => setPassword(e.target.value)}
+                            placeholder="••••••••"
                             className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-pink-300"
-                            placeholder="••••••••" required />
+                            required
+                        />
                     </div>
-                    {error && <p className="text-red-500 text-sm">{error}</p>}
-                    <button type="submit" disabled={loading}
-                        className="w-full bg-pink-600 text-white rounded-lg py-2 text-sm font-medium hover:bg-pink-700 disabled:opacity-50">
-                        {loading ? 'Signing in...' : 'Sign in'}
+                    <button
+                        type="submit"
+                        disabled={loading}
+                        className="w-full bg-pink-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-pink-700 disabled:opacity-50 mt-2"
+                    >
+                        {loading ? 'Signing in...' : 'Sign In'}
                     </button>
                 </form>
             </div>

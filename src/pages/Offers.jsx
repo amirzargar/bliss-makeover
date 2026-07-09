@@ -137,7 +137,7 @@ export default function Offers() {
                 <div>
                     <h1 className="text-xl font-semibold text-gray-800">Offers & Discounts</h1>
                     <p className="text-sm text-gray-400 mt-0.5">
-                        {offers.length} total · {activeCount} active · used {totalUsed} times
+                        {offers.length} total Â· {activeCount} active Â· used {totalUsed} times
                     </p>
                 </div>
                 <button
@@ -225,7 +225,7 @@ export default function Offers() {
                                         <span className={color.val}>For: {o.applies_to}</span>
                                     )}
                                     <span className={color.val}>
-                                        {new Date(o.start_date).toLocaleDateString('en-IN')} — {new Date(o.end_date).toLocaleDateString('en-IN')}
+                                        {new Date(o.start_date).toLocaleDateString('en-IN')} â€” {new Date(o.end_date).toLocaleDateString('en-IN')}
                                     </span>
                                 </div>
 
@@ -275,7 +275,7 @@ export default function Offers() {
                                 <label className="text-xs text-gray-500 mb-1 block">Offer title *</label>
                                 <input value={form.title}
                                     onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
-                                    placeholder="e.g. Eid Special — 20% off Bridal Package"
+                                    placeholder="e.g. Eid Special â€” 20% off Bridal Package"
                                     className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-pink-300" />
                             </div>
 
@@ -330,7 +330,7 @@ export default function Offers() {
                                 <label className="text-xs text-gray-500 mb-1 block">Promo code (optional)</label>
                                 <input value={form.promo_code}
                                     onChange={e => setForm(f => ({ ...f, promo_code: e.target.value.toUpperCase() }))}
-                                    placeholder="e.g. EID20 — staff enters this at checkout"
+                                    placeholder="e.g. EID20 â€” staff enters this at checkout"
                                     className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:border-pink-300" />
                             </div>
 
@@ -385,7 +385,7 @@ export default function Offers() {
                                     {Number(form.min_bill) > 0
                                         ? ` on bills above Rs.${Number(form.min_bill).toLocaleString('en-IN')}`
                                         : ''}
-                                    {form.promo_code ? ` · Code: ${form.promo_code}` : ''}
+                                    {form.promo_code ? ` Â· Code: ${form.promo_code}` : ''}
                                 </p>
                             </div>
                         )}

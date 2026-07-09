@@ -113,7 +113,7 @@ export default function Inventory() {
             <div className="flex items-center justify-between mb-4">
                 <div>
                     <h1 className="text-xl font-semibold text-gray-800">Inventory</h1>
-                    <p className="text-sm text-gray-400 mt-0.5">{items.length} products · {lowStock.length} low stock</p>
+                    <p className="text-sm text-gray-400 mt-0.5">{items.length} products Â· {lowStock.length} low stock</p>
                 </div>
                 <button onClick={() => { setForm(empty); setEditing(null); setShowForm(true) }}
                     className="bg-pink-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-pink-700 dynamic-shadow">
@@ -204,7 +204,7 @@ export default function Inventory() {
                                                 <button onClick={() => adjustStock(item.id, Number(adjustQty || 1))}
                                                     className="w-6 h-6 rounded bg-green-100 text-green-600 text-xs font-bold hover:bg-green-200 transition-colors">+</button>
                                                 <button onClick={() => setAdjustId(null)}
-                                                    className="text-xs text-gray-400 hover:text-gray-600 ml-1">×</button>
+                                                    className="text-xs text-gray-400 hover:text-gray-600 ml-1">Ã—</button>
                                             </div>
                                         ) : (
                                             <button onClick={() => { setAdjustId(item.id); setAdjustQty('') }}
@@ -215,7 +215,7 @@ export default function Inventory() {
                                     </td>
                                     <td className="px-4 py-3 text-gray-500">{item.min_level} {item.unit}</td>
                                     <td className="px-4 py-3">{statusPill(item)}</td>
-                                    <td className="px-4 py-3 text-gray-500 text-xs">{item.supplier || '—'}</td>
+                                    <td className="px-4 py-3 text-gray-500 text-xs">{item.supplier || 'â€”'}</td>
                                     <td className="px-4 py-3">
                                         <div className="flex gap-2">
                                             <button onClick={() => startEdit(item)}

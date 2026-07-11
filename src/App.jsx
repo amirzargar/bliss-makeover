@@ -13,6 +13,7 @@ import Loyalty from './pages/Loyalty'
 import Offers from './pages/Offers'
 import AppShell from './components/layout/AppShell'
 import Reports from './pages/Reports'
+import More from './pages/More'
 
 function ProtectedRoute({ children, adminOnly = false }) {
     const { user, profile, loading } = useAuthStore()
@@ -42,6 +43,7 @@ export default function App() {
                     <Route path="loyalty" element={<Loyalty />} />
                     <Route path="offers" element={<Offers />} />
                     <Route path="reports" element={<ProtectedRoute adminOnly><Reports /></ProtectedRoute>} />
+                    <Route path="more" element={<More />} />
                 </Route>
             </Routes>
         </BrowserRouter>

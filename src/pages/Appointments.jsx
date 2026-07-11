@@ -128,45 +128,59 @@ export default function Appointments() {
                     <p className="text-gray-300 text-sm mt-1">Click + Book Appointment to add one.</p>
                 </div>
             ) : (
-                <div className="space-y-3">
-                    {appointments.map(a => (
-                        <div key={a.id} className="bg-white rounded-xl border border-gray-100 p-4 flex items-center gap-4 hover:border-gray-200 transition-colors">
-                            <div className="text-center min-w-[56px]">
-                                <div className="text-sm font-semibold text-gray-800">
-                                    {new Date(a.scheduled_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+                        <div className="space-y-3">
+                            {appointments.map(a => (
+                                <div key={a.id} className="bg-white rounded-xl border border-gray-100 p-4 hover:border-gray-200 transition-colors">
+                                    {/* Top row - time + status */}
+                                    <div className="flex items-center justify-between mb-2">
+                                        <div className="flex items-center gap-2">
+                                            <div className="text-sm font-semibold text-gray-800">
+                                                {new Date(a.scheduled_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+                                            </div>
+                                            <div className="text-xs text-gray-400">{a.services?.duration_mins} min</div>
+                                        </div>
+                                        <select value={a.status} onChange={e => updateStatus(a.id, e.target.value)}
+                                            className={`text-xs px-2 py-1.5 rounded-full border-0 font-medium focus:outline-none cursor-pointer ${STATUS_COLORS[a.status]}`}>
+                                            <option value="confirmed">Confirmed</option>
+                                            <option value="in_progress">In Progress</option>
+                                            <option value="completed">Completed</option>
+                                            <option value="cancelled">Cancelled</option>
+                                            <option value="no_show">No Show</option>
+                                        </select>
+                                    </div>
+
+                                    {/* Middle row - customer + service */}
+                                    <div className="flex items-start justify-between mb-2">
+                                        <div>
+                                            <div className="font-medium text-gray-800">{a.customers?.name}</div>
+                                            <div className="text-xs text-gray-400">{a.customers?.phone}</div>
+                                        </div>
+                                        <div className="text-right">
+                                            <div className="text-sm text-gray-700">{a.services?.name}</div>
+                                            <span className="text-xs bg-pink-50 text-pink-600 px-2 py-0.5 rounded-full">
+                                                {a.services?.category}
+                                            </span>
+                                        </div>
+                                    </div>
+
+                                    {/* Bottom row - staff + amount + checkout */}
+                                    <div className="flex items-center justify-between pt-2 border-t border-gray-50">
+                                        <div className="text-xs text-gray-500">{a.users?.name || 'Unassigned'}</div>
+                                        <div className="flex items-center gap-2">
+                                            <div className="font-semibold text-gray-800 text-sm">
+                                                Rs.{Number(a.amount).toLocaleString('en-IN')}
+                                            </div>
+                                            {a.status === 'completed' && (
+                                                <button onClick={() => setShowCheckout(a)}
+                                                    className="bg-green-600 text-white px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-green-700">
+                                                    Checkout
+                                                </button>
+                                            )}
+                                        </div>
+                                    </div>
                                 </div>
-                                <div className="text-xs text-gray-400">{a.services?.duration_mins} min</div>
-                            </div>
-                            <div className="w-px h-10 bg-gray-100" />
-                            <div className="flex-1 min-w-0">
-                                <div className="font-medium text-gray-800 truncate">{a.customers?.name}</div>
-                                <div className="text-xs text-gray-400">{a.customers?.phone}</div>
-                            </div>
-                            <div className="flex-1 min-w-0">
-                                <div className="text-sm text-gray-700 truncate">{a.services?.name}</div>
-                                <span className="text-xs bg-pink-50 text-pink-600 px-2 py-0.5 rounded-full">{a.services?.category}</span>
-                            </div>
-                            <div className="text-sm text-gray-500 min-w-[80px]">{a.users?.name || '-'}</div>
-                            <div className="font-semibold text-gray-800 min-w-[70px] text-right">
-                                Rs.{Number(a.amount).toLocaleString('en-IN')}
-                            </div>
-                            <select value={a.status} onChange={e => updateStatus(a.id, e.target.value)}
-                                className={`text-xs px-2 py-1.5 rounded-full border-0 font-medium focus:outline-none cursor-pointer ${STATUS_COLORS[a.status]}`}>
-                                <option value="confirmed">Confirmed</option>
-                                <option value="in_progress">In Progress</option>
-                                <option value="completed">Completed</option>
-                                <option value="cancelled">Cancelled</option>
-                                <option value="no_show">No Show</option>
-                            </select>
-                            {a.status === 'completed' && (
-                                <button onClick={() => setShowCheckout(a)}
-                                    className="bg-green-600 text-white px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-green-700 whitespace-nowrap">
-                                    Checkout
-                                </button>
-                            )}
+                            ))}
                         </div>
-                    ))}
-                </div>
             )}
 
             {/* Book Appointment Modal */}
@@ -483,7 +497,7 @@ function CheckoutModal({ appointment: a, onClose, onDone }) {
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-2xl w-full max-w-sm p-6 max-h-[90vh] overflow-y-auto">
                 <h2 className="text-base font-semibold text-gray-800 mb-1">Checkout</h2>
-                <p className="text-sm text-gray-400 mb-4">{a.customers?.name} — {a.services?.name}</p>
+                <p className="text-sm text-gray-400 mb-4">{a.customers?.name} - {a.services?.name}</p>
 
                 <div className="bg-gray-50 rounded-xl p-4 mb-4 space-y-2 text-sm">
                     <div className="flex justify-between">
@@ -515,7 +529,7 @@ function CheckoutModal({ appointment: a, onClose, onDone }) {
                         {promoOffer && (
                             <div className="flex items-center justify-between mt-1">
                                 <p className="text-xs text-green-600 font-medium">
-                                    {promoOffer.title} — Rs.{promoDiscount.toLocaleString('en-IN')} off
+                                    {promoOffer.title} - Rs.{promoDiscount.toLocaleString('en-IN')} off
                                 </p>
                                 <button onClick={() => { setPromoOffer(null); setPromoCode('') }}
                                     className="text-xs text-gray-400 hover:text-gray-600">remove</button>

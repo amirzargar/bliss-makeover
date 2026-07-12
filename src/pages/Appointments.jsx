@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
+import Invoice from '../components/Invoice'
 
 const STATUS_COLORS = {
     confirmed: 'bg-blue-50 text-blue-700',
@@ -39,9 +40,9 @@ export default function Appointments() {
         setLoading(true)
         const [appts, custs, stf, svcs] = await Promise.all([
             supabase.from('appointments').select(`
-                *, customers(id,name,phone,loyalty_points,total_visits,total_spent),
-                users(name), services(name,category,duration_mins)
-            `).gte('scheduled_at', dateFilter + 'T00:00:00')
+        *, customers(id,name,phone,loyalty_points,total_visits,total_spent),
+        users(name), services(name,category,duration_mins)
+      `).gte('scheduled_at', dateFilter + 'T00:00:00')
                 .lte('scheduled_at', dateFilter + 'T23:59:59')
                 .order('scheduled_at'),
             supabase.from('customers').select('id,name,phone').order('name'),
@@ -112,14 +113,15 @@ export default function Appointments() {
                     <input type="date" value={dateFilter}
                         onChange={e => setDateFilter(e.target.value)}
                         className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-pink-300" />
-                    <button onClick={() => { setForm(emptyAppt); setSearch(''); setShowQuickAdd(false); setShowForm(true) }}
+                    <button
+                        onClick={() => { setForm(emptyAppt); setSearch(''); setShowQuickAdd(false); setShowForm(true) }}
                         className="bg-pink-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-pink-700">
                         + Book Appointment
                     </button>
                 </div>
             </div>
 
-            {/* List */}
+            {/* Appointment list */}
             {loading ? (
                 <div className="text-center text-gray-400 py-12">Loading...</div>
             ) : appointments.length === 0 ? (
@@ -128,59 +130,59 @@ export default function Appointments() {
                     <p className="text-gray-300 text-sm mt-1">Click + Book Appointment to add one.</p>
                 </div>
             ) : (
-                        <div className="space-y-3">
-                            {appointments.map(a => (
-                                <div key={a.id} className="bg-white rounded-xl border border-gray-100 p-4 hover:border-gray-200 transition-colors">
-                                    {/* Top row - time + status */}
-                                    <div className="flex items-center justify-between mb-2">
-                                        <div className="flex items-center gap-2">
-                                            <div className="text-sm font-semibold text-gray-800">
-                                                {new Date(a.scheduled_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
-                                            </div>
-                                            <div className="text-xs text-gray-400">{a.services?.duration_mins} min</div>
-                                        </div>
-                                        <select value={a.status} onChange={e => updateStatus(a.id, e.target.value)}
-                                            className={`text-xs px-2 py-1.5 rounded-full border-0 font-medium focus:outline-none cursor-pointer ${STATUS_COLORS[a.status]}`}>
-                                            <option value="confirmed">Confirmed</option>
-                                            <option value="in_progress">In Progress</option>
-                                            <option value="completed">Completed</option>
-                                            <option value="cancelled">Cancelled</option>
-                                            <option value="no_show">No Show</option>
-                                        </select>
+                <div className="space-y-3">
+                    {appointments.map(a => (
+                        <div key={a.id} className="bg-white rounded-xl border border-gray-100 p-4 hover:border-gray-200 transition-colors">
+                            {/* Top row - time + status */}
+                            <div className="flex items-center justify-between mb-2">
+                                <div className="flex items-center gap-2">
+                                    <div className="text-sm font-semibold text-gray-800">
+                                        {new Date(a.scheduled_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
                                     </div>
-
-                                    {/* Middle row - customer + service */}
-                                    <div className="flex items-start justify-between mb-2">
-                                        <div>
-                                            <div className="font-medium text-gray-800">{a.customers?.name}</div>
-                                            <div className="text-xs text-gray-400">{a.customers?.phone}</div>
-                                        </div>
-                                        <div className="text-right">
-                                            <div className="text-sm text-gray-700">{a.services?.name}</div>
-                                            <span className="text-xs bg-pink-50 text-pink-600 px-2 py-0.5 rounded-full">
-                                                {a.services?.category}
-                                            </span>
-                                        </div>
-                                    </div>
-
-                                    {/* Bottom row - staff + amount + checkout */}
-                                    <div className="flex items-center justify-between pt-2 border-t border-gray-50">
-                                        <div className="text-xs text-gray-500">{a.users?.name || 'Unassigned'}</div>
-                                        <div className="flex items-center gap-2">
-                                            <div className="font-semibold text-gray-800 text-sm">
-                                                Rs.{Number(a.amount).toLocaleString('en-IN')}
-                                            </div>
-                                            {a.status === 'completed' && (
-                                                <button onClick={() => setShowCheckout(a)}
-                                                    className="bg-green-600 text-white px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-green-700">
-                                                    Checkout
-                                                </button>
-                                            )}
-                                        </div>
-                                    </div>
+                                    <div className="text-xs text-gray-400">{a.services?.duration_mins} min</div>
                                 </div>
-                            ))}
+                                <select value={a.status} onChange={e => updateStatus(a.id, e.target.value)}
+                                    className={`text-xs px-2 py-1.5 rounded-full border-0 font-medium focus:outline-none cursor-pointer ${STATUS_COLORS[a.status]}`}>
+                                    <option value="confirmed">Confirmed</option>
+                                    <option value="in_progress">In Progress</option>
+                                    <option value="completed">Completed</option>
+                                    <option value="cancelled">Cancelled</option>
+                                    <option value="no_show">No Show</option>
+                                </select>
+                            </div>
+
+                            {/* Middle row - customer + service */}
+                            <div className="flex items-start justify-between mb-2">
+                                <div>
+                                    <div className="font-medium text-gray-800">{a.customers?.name}</div>
+                                    <div className="text-xs text-gray-400">{a.customers?.phone}</div>
+                                </div>
+                                <div className="text-right">
+                                    <div className="text-sm text-gray-700">{a.services?.name}</div>
+                                    <span className="text-xs bg-pink-50 text-pink-600 px-2 py-0.5 rounded-full">
+                                        {a.services?.category}
+                                    </span>
+                                </div>
+                            </div>
+
+                            {/* Bottom row - staff + amount + checkout */}
+                            <div className="flex items-center justify-between pt-2 border-t border-gray-50">
+                                <div className="text-xs text-gray-500">{a.users?.name || 'Unassigned'}</div>
+                                <div className="flex items-center gap-2">
+                                    <div className="font-semibold text-gray-800 text-sm">
+                                        Rs.{Number(a.amount).toLocaleString('en-IN')}
+                                    </div>
+                                    {a.status === 'completed' && (
+                                        <button onClick={() => setShowCheckout(a)}
+                                            className="bg-green-600 text-white px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-green-700">
+                                            Checkout
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
                         </div>
+                    ))}
+                </div>
             )}
 
             {/* Book Appointment Modal */}
@@ -189,7 +191,7 @@ export default function Appointments() {
                     <div className="bg-white rounded-2xl w-full max-w-md p-6 max-h-[90vh] overflow-y-auto">
                         <h2 className="text-base font-semibold text-gray-800 mb-5">Book Appointment</h2>
 
-                        {/* Customer section */}
+                        {/* Customer */}
                         <div className="mb-4">
                             <div className="flex items-center justify-between mb-1">
                                 <label className="text-xs font-medium text-gray-500">Customer</label>
@@ -202,18 +204,15 @@ export default function Appointments() {
                             {showQuickAdd ? (
                                 <div className="border border-pink-200 rounded-xl p-4 bg-pink-50 space-y-2">
                                     <p className="text-xs font-semibold text-pink-700 mb-1">New customer details</p>
-                                    <input
-                                        value={newCustomer.name}
+                                    <input value={newCustomer.name}
                                         onChange={e => setNewCustomer(c => ({ ...c, name: e.target.value }))}
                                         placeholder="Full name *"
                                         className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:border-pink-400" />
-                                    <input
-                                        value={newCustomer.phone}
+                                    <input value={newCustomer.phone}
                                         onChange={e => setNewCustomer(c => ({ ...c, phone: e.target.value }))}
                                         placeholder="Phone number *"
                                         className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:border-pink-400" />
-                                    <input
-                                        value={newCustomer.email}
+                                    <input value={newCustomer.email}
                                         onChange={e => setNewCustomer(c => ({ ...c, email: e.target.value }))}
                                         placeholder="Email (optional)"
                                         className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:border-pink-400" />
@@ -224,13 +223,10 @@ export default function Appointments() {
                                 </div>
                             ) : (
                                 <div className="space-y-2">
-                                    <input
-                                        value={search}
-                                        onChange={e => setSearch(e.target.value)}
+                                    <input value={search} onChange={e => setSearch(e.target.value)}
                                         placeholder="Search by name or phone..."
                                         className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-pink-300" />
-                                    <select
-                                        value={form.customer_id}
+                                    <select value={form.customer_id}
                                         onChange={e => setForm(f => ({ ...f, customer_id: e.target.value }))}
                                         size={Math.min(filteredCustomers.length + 1, 5)}
                                         className="w-full border border-gray-200 rounded-lg px-3 py-1 text-sm focus:outline-none focus:border-pink-300">
@@ -267,7 +263,7 @@ export default function Appointments() {
                             </select>
                             {selectedService && (
                                 <p className="text-xs text-gray-400 mt-1 pl-1">
-                                    {selectedService.category}  {selectedService.duration_mins} min  Rs.{Number(selectedService.price).toLocaleString('en-IN')}
+                                    {selectedService.category} - {selectedService.duration_mins} min - Rs.{Number(selectedService.price).toLocaleString('en-IN')}
                                 </p>
                             )}
                         </div>
@@ -275,7 +271,8 @@ export default function Appointments() {
                         {/* Staff */}
                         <div className="mb-4">
                             <label className="text-xs font-medium text-gray-500 mb-1 block">Assign to staff</label>
-                            <select value={form.staff_id} onChange={e => setForm(f => ({ ...f, staff_id: e.target.value }))}
+                            <select value={form.staff_id}
+                                onChange={e => setForm(f => ({ ...f, staff_id: e.target.value }))}
                                 className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-pink-300">
                                 <option value="">Select staff member...</option>
                                 {staff.map(s => (
@@ -286,7 +283,7 @@ export default function Appointments() {
 
                         {/* Date & Time */}
                         <div className="mb-4">
-                            <label className="text-xs font-medium text-gray-500 mb-1 block">Date & Time</label>
+                            <label className="text-xs font-medium text-gray-500 mb-1 block">Date and Time</label>
                             <input type="datetime-local" value={form.scheduled_at}
                                 onChange={e => setForm(f => ({ ...f, scheduled_at: e.target.value }))}
                                 className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-pink-300" />
@@ -295,7 +292,8 @@ export default function Appointments() {
                         {/* Notes */}
                         <div className="mb-5">
                             <label className="text-xs font-medium text-gray-500 mb-1 block">Notes (optional)</label>
-                            <textarea value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
+                            <textarea value={form.notes}
+                                onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
                                 className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-pink-300"
                                 rows={2} placeholder="Special requests, allergies..." />
                         </div>
@@ -335,6 +333,8 @@ function CheckoutModal({ appointment: a, onClose, onDone }) {
     const [promoLoading, setPromoLoading] = useState(false)
     const [redeemPts, setRedeemPts] = useState(0)
     const [saving, setSaving] = useState(false)
+    const [showInvoice, setShowInvoice] = useState(false)
+    const [savedTxn, setSavedTxn] = useState(null)
 
     const subtotal = Number(a.amount || 0)
     const manualDiscount = Math.min(Number(discount || 0), subtotal)
@@ -372,7 +372,7 @@ function CheckoutModal({ appointment: a, onClose, onDone }) {
         if (!data) {
             setPromoError('Invalid or expired promo code')
         } else if (data.min_bill && subtotal < data.min_bill) {
-            setPromoError(`Min bill Rs.${Number(data.min_bill).toLocaleString('en-IN')} required`)
+            setPromoError('Min bill Rs.' + Number(data.min_bill).toLocaleString('en-IN') + ' required')
         } else if (data.max_uses && data.usage_count >= data.max_uses) {
             setPromoError('This offer has reached its usage limit')
         } else {
@@ -385,20 +385,26 @@ function CheckoutModal({ appointment: a, onClose, onDone }) {
         setSaving(true)
 
         // 1. Create transaction
-        const { error: txnError } = await supabase.from('transactions').insert({
-            appointment_id: a.id,
-            customer_id: a.customer_id,
-            staff_id: a.staff_id,
-            subtotal,
-            discount_amount: totalDiscount,
-            loyalty_redeemed: pointsDiscount,
-            total,
-            payment_mode: paymentMode,
-            offer_id: promoOffer?.id || null,
-        })
-        if (txnError) { alert('Payment failed: ' + txnError.message); setSaving(false); return }
+        const { data: txnData, error: txnError } = await supabase
+            .from('transactions').insert({
+                appointment_id: a.id,
+                customer_id: a.customer_id,
+                staff_id: a.staff_id,
+                subtotal,
+                discount_amount: totalDiscount,
+                loyalty_redeemed: pointsDiscount,
+                total,
+                payment_mode: paymentMode,
+                offer_id: promoOffer?.id || null,
+            }).select('*, customers(name, phone, email)').single()
 
-        // 2. Auto-deduct inventory for this service
+        if (txnError) {
+            alert('Payment failed: ' + txnError.message)
+            setSaving(false)
+            return
+        }
+
+        // 2. Auto-deduct inventory
         const { data: svcProducts } = await supabase
             .from('service_products')
             .select('product_id, quantity, inventory(stock_qty)')
@@ -414,16 +420,13 @@ function CheckoutModal({ appointment: a, onClose, onDone }) {
             }
         }
 
-        // 3. Log commission for staff
+        // 3. Log commission
         if (a.staff_id) {
             const { data: staffData, error: staffErr } = await supabase
                 .from('users').select('commission_rate').eq('id', a.staff_id).single()
-
             if (staffErr) {
                 console.error('Failed to fetch staff commission rate:', staffErr)
-                alert('Warning: could not fetch staff commission rate - ' + staffErr.message)
             }
-
             if (staffData) {
                 const commissionEarned = Math.round(total * staffData.commission_rate / 100)
                 const { error: commErr } = await supabase.from('commission_log').insert({
@@ -435,13 +438,8 @@ function CheckoutModal({ appointment: a, onClose, onDone }) {
                     month: new Date().toISOString().slice(0, 7),
                     is_paid: false,
                 })
-                if (commErr) {
-                    console.error('Failed to insert commission log:', commErr)
-                    alert('Warning: commission not logged - ' + commErr.message)
-                }
+                if (commErr) console.error('Commission log error:', commErr)
             }
-        } else {
-            console.warn('No staff assigned to this appointment - commission not logged')
         }
 
         // 4. Update offer usage
@@ -485,12 +483,24 @@ function CheckoutModal({ appointment: a, onClose, onDone }) {
                 event_type: 'redeemed',
                 points: -pointsUsed,
                 balance_after: newPoints,
-                description: `Redeemed ${pointsUsed} pts for Rs.${pointsDiscount} off`,
+                description: 'Redeemed ' + pointsUsed + ' pts for Rs.' + pointsDiscount + ' off',
             })
         }
 
         setSaving(false)
-        onDone()
+        setSavedTxn(txnData)
+        setShowInvoice(true)
+    }
+
+    // Show invoice after checkout
+    if (showInvoice && savedTxn) {
+        return (
+            <Invoice
+                transaction={savedTxn}
+                appointment={a}
+                onClose={() => { setShowInvoice(false); onDone() }}
+            />
+        )
     }
 
     return (
@@ -564,6 +574,7 @@ function CheckoutModal({ appointment: a, onClose, onDone }) {
                             <span className="font-medium">- Rs.{totalDiscount.toLocaleString('en-IN')}</span>
                         </div>
                     )}
+
                     <div className="border-t border-gray-200 pt-2 flex justify-between font-semibold text-base">
                         <span>Total</span>
                         <span className="text-pink-700">Rs.{total.toLocaleString('en-IN')}</span>

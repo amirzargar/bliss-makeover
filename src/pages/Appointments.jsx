@@ -26,6 +26,7 @@ export default function Appointments() {
     const [loading, setLoading] = useState(true)
     const [showForm, setShowForm] = useState(false)
     const [showCheckout, setShowCheckout] = useState(null)
+    const [showWAPreview, setShowWAPreview] = useState(null)
     const [showQuickAdd, setShowQuickAdd] = useState(false)
     const [form, setForm] = useState(emptyAppt)
     const [newCustomer, setNewCustomer] = useState(emptyCustomer)
@@ -133,6 +134,7 @@ export default function Appointments() {
                 <div className="space-y-3">
                     {appointments.map(a => (
                         <div key={a.id} className="bg-white rounded-xl border border-gray-100 p-4 hover:border-gray-200 transition-colors">
+
                             {/* Top row - time + status */}
                             <div className="flex items-center justify-between mb-2">
                                 <div className="flex items-center gap-2">
@@ -165,21 +167,27 @@ export default function Appointments() {
                                 </div>
                             </div>
 
-                            {/* Bottom row - staff + amount + checkout */}
+                            {/* Bottom row - staff + amount + actions */}
                             <div className="flex items-center justify-between pt-2 border-t border-gray-50">
                                 <div className="text-xs text-gray-500">{a.users?.name || 'Unassigned'}</div>
-                                <div className="flex items-center gap-2">
+                                <div className="flex items-center gap-2 flex-wrap justify-end">
                                     <div className="font-semibold text-gray-800 text-sm">
                                         Rs.{Number(a.amount).toLocaleString('en-IN')}
                                     </div>
+                                    <button
+                                        onClick={() => setShowWAPreview(a)}
+                                        className="bg-green-500 text-white px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-green-600">
+                                        WhatsApp
+                                    </button>
                                     {a.status === 'completed' && (
                                         <button onClick={() => setShowCheckout(a)}
-                                            className="bg-green-600 text-white px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-green-700">
+                                            className="bg-green-700 text-white px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-green-800">
                                             Checkout
                                         </button>
                                     )}
                                 </div>
                             </div>
+
                         </div>
                     ))}
                 </div>
@@ -320,6 +328,14 @@ export default function Appointments() {
                     onDone={() => { setShowCheckout(null); fetchAll() }}
                 />
             )}
+
+            {/* WhatsApp Modal */}
+            {showWAPreview && (
+                <WhatsAppModal
+                    appointment={showWAPreview}
+                    onClose={() => setShowWAPreview(null)}
+                />
+            )}
         </div>
     )
 }
@@ -424,9 +440,7 @@ function CheckoutModal({ appointment: a, onClose, onDone }) {
         if (a.staff_id) {
             const { data: staffData, error: staffErr } = await supabase
                 .from('users').select('commission_rate').eq('id', a.staff_id).single()
-            if (staffErr) {
-                console.error('Failed to fetch staff commission rate:', staffErr)
-            }
+            if (staffErr) console.error('Staff commission fetch error:', staffErr)
             if (staffData) {
                 const commissionEarned = Math.round(total * staffData.commission_rate / 100)
                 const { error: commErr } = await supabase.from('commission_log').insert({
@@ -515,7 +529,6 @@ function CheckoutModal({ appointment: a, onClose, onDone }) {
                         <span className="font-medium">Rs.{subtotal.toLocaleString('en-IN')}</span>
                     </div>
 
-                    {/* Manual discount */}
                     <div className="flex justify-between items-center">
                         <span className="text-gray-500">Manual discount (Rs.)</span>
                         <input type="number" value={discount} min={0} max={subtotal}
@@ -523,7 +536,6 @@ function CheckoutModal({ appointment: a, onClose, onDone }) {
                             className="w-20 border border-gray-200 rounded-lg px-2 py-1 text-right text-sm focus:outline-none focus:border-pink-300" />
                     </div>
 
-                    {/* Promo code */}
                     <div>
                         <div className="flex gap-1.5 mt-1">
                             <input value={promoCode}
@@ -547,7 +559,6 @@ function CheckoutModal({ appointment: a, onClose, onDone }) {
                         )}
                     </div>
 
-                    {/* Loyalty points */}
                     {(a.customers?.loyalty_points || 0) >= 100 && (
                         <div className="flex justify-between items-center">
                             <span className="text-gray-500">
@@ -584,7 +595,6 @@ function CheckoutModal({ appointment: a, onClose, onDone }) {
                     </p>
                 </div>
 
-                {/* Payment method */}
                 <div className="mb-5">
                     <label className="text-xs text-gray-500 mb-2 block">Payment method</label>
                     <div className="grid grid-cols-4 gap-2">
@@ -608,6 +618,179 @@ function CheckoutModal({ appointment: a, onClose, onDone }) {
                         {saving ? 'Processing...' : 'Confirm Payment'}
                     </button>
                 </div>
+            </div>
+        </div>
+    )
+}
+
+function WhatsAppModal({ appointment: a, onClose }) {
+    const customerName = a.customers?.name || 'there'
+    const serviceName = a.services?.name || 'your appointment'
+    const staffName = a.users?.name || 'our team'
+    const customerPhone = a.customers?.phone || ''
+
+    const apptDate = new Date(a.scheduled_at).toLocaleDateString('en-IN', {
+        weekday: 'long', day: 'numeric', month: 'long'
+    })
+    const apptTime = new Date(a.scheduled_at).toLocaleTimeString('en-IN', {
+        hour: '2-digit', minute: '2-digit'
+    })
+
+    const reminderMsg = [
+        'Hi ' + customerName + '!',
+        '',
+        'This is a friendly reminder for your appointment at Bliss Makeover.',
+        '',
+        'Service: ' + serviceName,
+        'Date: ' + apptDate,
+        'Time: ' + apptTime,
+        'Stylist: ' + staffName,
+        '',
+        'Please arrive 5 minutes early.',
+        'See you soon!',
+        '',
+        '- Bliss Makeover',
+        'Hair | Makeup | Skin',
+    ].join('\n')
+
+    const thankYouMsg = [
+        'Hi ' + customerName + '!',
+        '',
+        'Thank you for visiting Bliss Makeover today.',
+        'We hope you loved your ' + serviceName + '!',
+        '',
+        'Your loyalty points have been updated.',
+        'We look forward to seeing you again soon!',
+        '',
+        '- Bliss Makeover',
+        'Hair | Makeup | Skin',
+    ].join('\n')
+
+    const rescheduleMsg = [
+        'Hi ' + customerName + '!',
+        '',
+        'We noticed your appointment on ' + apptDate + ' at ' + apptTime + ' was cancelled.',
+        '',
+        'We would love to reschedule for you at your convenience.',
+        'Please call or message us to book a new slot.',
+        '',
+        '- Bliss Makeover',
+        'Hair | Makeup | Skin',
+    ].join('\n')
+
+    const followUpMsg = [
+        'Hi ' + customerName + '!',
+        '',
+        'It has been a while since your last visit at Bliss Makeover.',
+        'We miss you!',
+        '',
+        'Book your next appointment and enjoy exclusive offers.',
+        'Call or message us anytime.',
+        '',
+        '- Bliss Makeover',
+        'Hair | Makeup | Skin',
+    ].join('\n')
+
+    const templates = [
+        { label: 'Appointment Reminder', msg: reminderMsg },
+        { label: 'Thank You Message', msg: thankYouMsg },
+        { label: 'Reschedule Request', msg: rescheduleMsg },
+        { label: 'Follow Up / We Miss You', msg: followUpMsg },
+    ]
+
+    const [selected, setSelected] = useState(0)
+    const [message, setMessage] = useState(reminderMsg)
+
+    function selectTemplate(index) {
+        setSelected(index)
+        setMessage(templates[index].msg)
+    }
+
+    function openWhatsApp() {
+        const phone = customerPhone.replace(/\D/g, '')
+        const phoneWithCode = phone.startsWith('91') ? phone : '91' + phone
+        const url = 'https://wa.me/' + phoneWithCode + '?text=' + encodeURIComponent(message)
+        window.open(url, '_blank')
+        onClose()
+    }
+
+    function copyMessage() {
+        navigator.clipboard.writeText(message)
+            .then(() => alert('Message copied to clipboard!'))
+            .catch(() => alert('Could not copy - please select and copy manually'))
+    }
+
+    return (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-2xl w-full max-w-md p-6 max-h-[90vh] overflow-y-auto">
+
+                {/* Header */}
+                <div className="flex items-center justify-between mb-4">
+                    <div>
+                        <h2 className="text-base font-semibold text-gray-800">WhatsApp Message</h2>
+                        <p className="text-xs text-gray-400 mt-0.5">
+                            To: {customerName} ({customerPhone || 'no phone on file'})
+                        </p>
+                    </div>
+                    <button onClick={onClose}
+                        className="text-gray-300 hover:text-gray-500 font-bold text-lg">
+                        x
+                    </button>
+                </div>
+
+                {/* Template selector */}
+                <div className="mb-4">
+                    <p className="text-xs font-medium text-gray-500 mb-2">Choose template</p>
+                    <div className="grid grid-cols-2 gap-2">
+                        {templates.map((t, i) => (
+                            <button key={i} onClick={() => selectTemplate(i)}
+                                className={`text-left px-3 py-2 rounded-lg text-xs font-medium border transition-colors ${selected === i
+                                        ? 'bg-green-50 border-green-300 text-green-700'
+                                        : 'bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100'
+                                    }`}>
+                                {t.label}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+
+                {/* Message preview */}
+                <div className="mb-4">
+                    <p className="text-xs font-medium text-gray-500 mb-2">
+                        Message preview (you can edit before sending)
+                    </p>
+                    <textarea
+                        value={message}
+                        onChange={e => setMessage(e.target.value)}
+                        className="w-full border border-gray-200 rounded-xl px-3 py-3 text-sm text-gray-700 focus:outline-none focus:border-green-300 leading-relaxed"
+                        rows={10} />
+                </div>
+
+                {/* No phone warning */}
+                {!customerPhone && (
+                    <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4">
+                        <p className="text-xs text-amber-700 font-medium">
+                            No phone number saved for this customer.
+                            Add it in the Customers page first.
+                        </p>
+                    </div>
+                )}
+
+                {/* Action buttons */}
+                <div className="flex gap-2">
+                    <button onClick={copyMessage}
+                        className="flex-1 border border-gray-200 text-gray-600 py-2 rounded-lg text-sm font-medium hover:bg-gray-50">
+                        Copy Message
+                    </button>
+                    <button onClick={openWhatsApp} disabled={!customerPhone}
+                        className="flex-1 bg-green-500 text-white py-2 rounded-lg text-sm font-medium hover:bg-green-600 disabled:opacity-40">
+                        Open WhatsApp
+                    </button>
+                </div>
+
+                <p className="text-xs text-gray-400 text-center mt-3">
+                    Opens WhatsApp with this message and number pre-filled
+                </p>
             </div>
         </div>
     )

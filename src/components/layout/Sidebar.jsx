@@ -7,6 +7,7 @@ const navItems = [
     { to: '/inventory', label: 'Inventory' },
     { to: '/services', label: 'Services' },
     { to: '/customers', label: 'Customers' },
+    { to: '/product-sales', label: 'Product Sales' }, 
     { to: '/loyalty', label: 'Loyalty Points' },
     { to: '/offers', label: 'Offers' },
 ]

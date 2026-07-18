@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom'
 import { useAuthStore } from '../store/authStore'
 
 const items = [
+    { to: '/product-sales', label: 'Product Sales', desc: 'Sell products without appointment' },
     { to: '/services', label: 'Services & Pricing', desc: 'Manage your service menu' },
     { to: '/loyalty', label: 'Loyalty Points', desc: 'Customer points and tiers' },
     { to: '/offers', label: 'Offers & Discounts', desc: 'Create and manage offers' },

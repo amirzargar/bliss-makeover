@@ -11,6 +11,7 @@ const PAGE_TITLES = {
     '/offers': 'Offers & Discounts',
     '/staff': 'Staff & Commission',
     '/reports': 'Reports',
+    '/product-sales': 'Product Sales',
 }
 
 export default function Topbar() {

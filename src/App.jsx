@@ -14,6 +14,7 @@ import Reports from './pages/Reports'
 import More from './pages/More'
 import ProductSales from './pages/ProductSales'
 import AppShell from './components/layout/AppShell'
+import PortalApp from './portal/PortalApp'
 
 function ProtectedRoute({ children, adminOnly = false }) {
     const { user, profile, loading } = useAuthStore()
@@ -34,6 +35,11 @@ export default function App() {
     return (
         <BrowserRouter>
             <Routes>
+                {/* Customer portal - completely separate from staff app */}
+                <Route path="/portal" element={<PortalApp />} />
+                <Route path="/portal/*" element={<PortalApp />} />
+
+                {/* Staff app */}
                 <Route path="/login" element={<Login />} />
                 <Route path="/" element={
                     <ProtectedRoute><AppShell /></ProtectedRoute>

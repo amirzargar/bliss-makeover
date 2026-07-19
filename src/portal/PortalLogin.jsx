@@ -381,11 +381,10 @@ export default function PortalLogin({ onLogin }) {
                 Please WhatsApp us with your registered phone number and we will reset your password for you within a few minutes.
               </p>
               
-                href="https://wa.me/917006604551?text=Hi%20Bliss%20Makeover!%20I%20forgot%20my%20portal%20password.%20My%20registered%20phone%20is%3A%20"
-                target="_blank"
-                rel="noreferrer"
-                className="inline-block bg-green-500 text-white px-5 py-2.5 rounded-xl text-sm font-semibold hover:bg-green-600">
-                WhatsApp Us
+                href={'https://wa.me/917006604551?text=Hi Bliss Makeover! I forgot my portal password. My registered phone is: '}
+  target="_blank"
+  rel="noreferrer"
+  className="inline-block bg-green-500 text-white px-5 py-2.5 rounded-xl text-sm font-semibold hover:bg-green-600">                WhatsApp Us
               </a>
               <p className="text-xs text-gray-400 mt-3">
                 Available: Mon-Sat 9am to 8pm

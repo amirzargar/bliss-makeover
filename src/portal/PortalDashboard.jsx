@@ -621,11 +621,10 @@ export default function PortalDashboard({ customer, onLogout, onCustomerUpdate }
             <div className="bg-white rounded-2xl border border-gray-100 p-4">
               <h3 className="text-sm font-semibold text-gray-700 mb-3">Need help?</h3>
               
-                href="https://wa.me/917006604551"
-                target="_blank"
-                rel="noreferrer"
-                className="flex items-center justify-between bg-green-50 border border-green-200 rounded-xl p-3 hover:bg-green-100 transition-colors">
-                <div>
+                href={'https://wa.me/917006604551'}
+  target="_blank"
+  rel="noreferrer"
+  className="flex items-center justify-between bg-green-50 border border-green-200 rounded-xl p-3 hover:bg-green-100 transition-colors">                <div>
                   <div className="text-sm font-medium text-green-700">Contact Bliss Makeover</div>
                   <div className="text-xs text-green-600">WhatsApp us for any queries</div>
                 </div>

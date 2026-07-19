@@ -371,32 +371,35 @@ export default function PortalLogin({ onLogin }) {
 
                 {/* FORGOT PASSWORD */}
                 {mode === 'forgot' && (
-          <div className="space-y-4">
-            <div className="bg-pink-50 border border-pink-200 rounded-xl p-4 text-center">
-              <div className="text-2xl mb-2">?</div>
-              <p className="text-sm font-semibold text-pink-700 mb-2">
-                Forgot your password?
-              </p>
-              <p className="text-xs text-gray-500 mb-3">
-                Please WhatsApp us with your registered phone number and we will reset your password for you within a few minutes.
-              </p>
-              
-                href={'https://wa.me/917006604551?text=Hi Bliss Makeover! I forgot my portal password. My registered phone is: '}
-  target="_blank"
-  rel="noreferrer"
-  className="inline-block bg-green-500 text-white px-5 py-2.5 rounded-xl text-sm font-semibold hover:bg-green-600">                WhatsApp Us
-              </a>
-              <p className="text-xs text-gray-400 mt-3">
-                Available: Mon-Sat 9am to 8pm
-              </p>
-            </div>
-            <button
-              onClick={() => { setMode('login'); setError('') }}
-              className="text-xs text-gray-400 hover:text-gray-600 text-center w-full">
-              Back to sign in
-            </button>
-          </div>
-        )}
+                    <div className="space-y-4">
+                        <div className="bg-pink-50 border border-pink-200 rounded-xl p-4 text-center">
+                            <p className="text-2xl mb-2">?</p>
+                            <p className="text-sm font-semibold text-pink-700 mb-2">
+                                Forgot your password?
+                            </p>
+                            <p className="text-xs text-gray-500 mb-3">
+                                Please WhatsApp us with your registered phone number and we will reset your password for you within a few minutes.
+                            </p>
+                            <button
+                                onClick={() => {
+                                    const msg = 'Hi Bliss Makeover! I forgot my portal password. My registered phone is: '
+                                    window.open('https://wa.me/917006604551?text=' + encodeURIComponent(msg), '_blank')
+                                }}
+                                className="inline-block bg-green-500 text-white px-5 py-2.5 rounded-xl text-sm font-semibold hover:bg-green-600">
+                                WhatsApp Us
+                            </button>
+                            <p className="text-xs text-gray-400 mt-3">
+                                Available: Mon-Sat 9am to 8pm
+                            </p>
+                        </div>
+                        <button
+                            onClick={() => { setMode('login'); setError('') }}
+                            className="text-xs text-gray-400 hover:text-gray-600 text-center w-full">
+                            Back to sign in
+                        </button>
+                    </div>
+                )}
+                  
 
             <p className="text-center text-xs text-gray-300 mt-6">
                 Bliss Makeover By BBI

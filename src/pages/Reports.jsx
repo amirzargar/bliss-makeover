@@ -26,6 +26,7 @@ export default function Reports() {
     const [paymentMix, setPaymentMix] = useState([])
     const [tierDist, setTierDist] = useState([])
     const [summary, setSummary] = useState({ totalRevenue: 0, totalDiscount: 0, avgBill: 0, txnCount: 0, newCustomers: 0 })
+    const [sourceBreakdown, setSourceBreakdown] = useState({ walkin: 0, prebook: 0, portal: 0 })
     const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7))
 
     useEffect(() => { fetchReports() }, [selectedMonth])
@@ -33,16 +34,18 @@ export default function Reports() {
     async function fetchReports() {
         setLoading(true)
 
-        const monthStart = `${selectedMonth}-01T00:00:00`
+        const monthStart = selectedMonth + '-01T00:00:00'
         const [year, month] = selectedMonth.split('-').map(Number)
-        const nextMonthStr = month === 12 ? `${year + 1}-01` : `${year}-${String(month + 1).padStart(2, '0')}`
-        const monthEnd = `${nextMonthStr}-01T00:00:00`
+        const nextMonthStr = month === 12
+            ? (year + 1) + '-01'
+            : year + '-' + String(month + 1).padStart(2, '0')
+        const monthEnd = nextMonthStr + '-01T00:00:00'
 
         const historyDate = new Date()
         historyDate.setMonth(historyDate.getMonth() - 5)
         const historyStart = historyDate.toISOString().slice(0, 7) + '-01T00:00:00'
 
-        const [txns, allTxns, appts, staff, customers, commissions] = await Promise.all([
+        const [txns, allTxns, appts, staff, customers, commissions, sourceStats] = await Promise.all([
             supabase.from('transactions')
                 .select('total, discount_amount, payment_mode, created_at, customers(name)')
                 .gte('created_at', monthStart)
@@ -67,21 +70,25 @@ export default function Reports() {
             supabase.from('commission_log')
                 .select('staff_id, commission_earned, users(name)')
                 .eq('month', selectedMonth),
+
+            supabase.from('appointments')
+                .select('booking_source')
+                .gte('scheduled_at', monthStart)
+                .lt('scheduled_at', monthEnd),
         ])
 
         const txnData = txns.data || []
         const apptData = appts.data || []
         const custData = customers.data || []
 
+        // Summary
         const totalRevenue = txnData.reduce((s, t) => s + Number(t.total || 0), 0)
         const totalDiscount = txnData.reduce((s, t) => s + Number(t.discount_amount || 0), 0)
         const avgBill = txnData.length ? totalRevenue / txnData.length : 0
-        const newCustomers = custData.filter(c =>
-            c.created_at?.slice(0, 7) === selectedMonth
-        ).length
-
+        const newCustomers = custData.filter(c => c.created_at?.slice(0, 7) === selectedMonth).length
         setSummary({ totalRevenue, totalDiscount, avgBill, txnCount: txnData.length, newCustomers })
 
+        // Revenue trend
         const revByMonth = {}
             ; (allTxns.data || []).forEach(t => {
                 if (!t.created_at) return
@@ -90,12 +97,13 @@ export default function Reports() {
             })
         const trend = Object.entries(revByMonth)
             .sort(([a], [b]) => a.localeCompare(b))
-            .map(([month, revenue]) => ({
-                month: MONTHS[parseInt(month.slice(5, 7)) - 1] + ' ' + month.slice(2, 4),
+            .map(([m, revenue]) => ({
+                month: MONTHS[parseInt(m.slice(5, 7)) - 1] + ' ' + m.slice(2, 4),
                 revenue: Math.round(revenue),
             }))
         setMonthlyRev(trend)
 
+        // Top services
         const svcMap = {}
         apptData.forEach(a => {
             const name = a.services?.name || 'Unknown'
@@ -103,12 +111,9 @@ export default function Reports() {
             svcMap[name].count++
             svcMap[name].revenue += Number(a.amount || 0)
         })
-        setTopServices(
-            Object.values(svcMap)
-                .sort((a, b) => b.revenue - a.revenue)
-                .slice(0, 6)
-        )
+        setTopServices(Object.values(svcMap).sort((a, b) => b.revenue - a.revenue).slice(0, 6))
 
+        // Staff performance
         const staffMap = {}
         apptData.forEach(a => {
             const name = a.users?.name || 'Unassigned'
@@ -119,34 +124,36 @@ export default function Reports() {
         })
             ; (commissions.data || []).forEach(c => {
                 const id = c.staff_id
-                if (staffMap[id]) {
-                    staffMap[id].commission = Number(c.commission_earned || 0)
-                }
+                if (staffMap[id]) staffMap[id].commission = Number(c.commission_earned || 0)
             })
-        setStaffPerf(
-            Object.values(staffMap).sort((a, b) => b.revenue - a.revenue)
-        )
+        setStaffPerf(Object.values(staffMap).sort((a, b) => b.revenue - a.revenue))
 
+        // Payment mix
         const pmMap = {}
         txnData.forEach(t => {
             if (!t.payment_mode) return
             pmMap[t.payment_mode] = (pmMap[t.payment_mode] || 0) + Number(t.total || 0)
         })
-        setPaymentMix(
-            Object.entries(pmMap).map(([name, value]) => ({
-                name: name.charAt(0).toUpperCase() + name.slice(1),
-                value: Math.round(value),
-            }))
-        )
+        setPaymentMix(Object.entries(pmMap).map(([name, value]) => ({
+            name: name.charAt(0).toUpperCase() + name.slice(1),
+            value: Math.round(value),
+        })))
 
+        // Tier distribution
         const tierMap = { basic: 0, silver: 0, gold: 0, platinum: 0 }
-        custData.forEach(c => { if (c.loyalty_tier && tierMap[c.loyalty_tier] !== undefined) tierMap[c.loyalty_tier]++ })
-        setTierDist(
-            Object.entries(tierMap).map(([name, value]) => ({
-                name: name.charAt(0).toUpperCase() + name.slice(1),
-                value,
-            }))
-        )
+        custData.forEach(c => {
+            if (c.loyalty_tier && tierMap[c.loyalty_tier] !== undefined) tierMap[c.loyalty_tier]++
+        })
+        setTierDist(Object.entries(tierMap).map(([name, value]) => ({
+            name: name.charAt(0).toUpperCase() + name.slice(1), value
+        })))
+
+        // Booking source breakdown
+        const sourceData = sourceStats.data || []
+        const walkinCount = sourceData.filter(a => a.booking_source === 'walk_in').length
+        const prebookCount = sourceData.filter(a => a.booking_source === 'staff' || !a.booking_source).length
+        const portalCount = sourceData.filter(a => a.booking_source === 'portal').length
+        setSourceBreakdown({ walkin: walkinCount, prebook: prebookCount, portal: portalCount })
 
         setLoading(false)
     }
@@ -156,22 +163,27 @@ export default function Reports() {
             ['Bliss Makeover - Monthly Report', selectedMonth],
             [],
             ['SUMMARY'],
-            ['Total Revenue', `Rs.${(summary.totalRevenue ?? 0).toLocaleString('en-IN')}`],
+            ['Total Revenue', 'Rs.' + (summary.totalRevenue ?? 0).toLocaleString('en-IN')],
             ['Total Transactions', summary.txnCount ?? 0],
-            ['Average Bill', `Rs.${Math.round(summary.avgBill ?? 0).toLocaleString('en-IN')}`],
-            ['Total Discounts Given', `Rs.${(summary.totalDiscount ?? 0).toLocaleString('en-IN')}`],
+            ['Average Bill', 'Rs.' + Math.round(summary.avgBill ?? 0).toLocaleString('en-IN')],
+            ['Total Discounts Given', 'Rs.' + (summary.totalDiscount ?? 0).toLocaleString('en-IN')],
             ['New Customers', summary.newCustomers ?? 0],
+            [],
+            ['BOOKING SOURCES'],
+            ['Walk-ins', sourceBreakdown.walkin],
+            ['Pre-booked', sourceBreakdown.prebook],
+            ['Portal bookings', sourceBreakdown.portal],
             [],
             ['TOP SERVICES'],
             ['Service', 'Times Done', 'Revenue'],
-            ...topServices.map(s => [s.name, s.count, `Rs.${s.revenue.toLocaleString('en-IN')}`]),
+            ...topServices.map(s => [s.name, s.count, 'Rs.' + s.revenue.toLocaleString('en-IN')]),
             [],
             ['STAFF PERFORMANCE'],
             ['Staff', 'Services Done', 'Revenue Generated', 'Commission'],
             ...staffPerf.map(s => [
                 s.name, s.services,
-                `Rs.${s.revenue.toLocaleString('en-IN')}`,
-                s.commission ? `Rs.${s.commission.toLocaleString('en-IN')}` : '-'
+                'Rs.' + s.revenue.toLocaleString('en-IN'),
+                s.commission ? 'Rs.' + s.commission.toLocaleString('en-IN') : '-'
             ]),
         ]
         const csv = rows.map(r => r.join(',')).join('\n')
@@ -179,10 +191,12 @@ export default function Reports() {
         const url = URL.createObjectURL(blob)
         const a = document.createElement('a')
         a.href = url
-        a.download = `bliss-report-${selectedMonth}.csv`
+        a.download = 'bliss-report-' + selectedMonth + '.csv'
         a.click()
         URL.revokeObjectURL(url)
     }
+
+    const totalBookings = sourceBreakdown.walkin + sourceBreakdown.prebook + sourceBreakdown.portal
 
     if (loading) return (
         <div className="flex items-center justify-center h-64 text-gray-400">Loading reports...</div>
@@ -190,6 +204,7 @@ export default function Reports() {
 
     return (
         <div className="space-y-5">
+
             {/* Header */}
             <div className="flex items-center justify-between">
                 <div>
@@ -211,16 +226,16 @@ export default function Reports() {
             <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
                 <StatCard
                     label="Total revenue"
-                    value={`Rs.${Math.round(summary.totalRevenue ?? 0).toLocaleString('en-IN')}`}
-                    sub={`${summary.txnCount ?? 0} transactions`}
+                    value={'Rs.' + Math.round(summary.totalRevenue ?? 0).toLocaleString('en-IN')}
+                    sub={(summary.txnCount ?? 0) + ' transactions'}
                     color="text-pink-700" />
                 <StatCard
                     label="Average bill"
-                    value={`Rs.${Math.round(summary.avgBill ?? 0).toLocaleString('en-IN')}`}
+                    value={'Rs.' + Math.round(summary.avgBill ?? 0).toLocaleString('en-IN')}
                     sub="per transaction" />
                 <StatCard
                     label="Discounts given"
-                    value={`Rs.${Math.round(summary.totalDiscount ?? 0).toLocaleString('en-IN')}`}
+                    value={'Rs.' + Math.round(summary.totalDiscount ?? 0).toLocaleString('en-IN')}
                     sub="total savings to customers" />
                 <StatCard
                     label="New customers"
@@ -230,6 +245,48 @@ export default function Reports() {
                     label="Services done"
                     value={staffPerf.reduce((s, st) => s + (st.services ?? 0), 0)}
                     sub="completed appointments" />
+            </div>
+
+            {/* Booking source breakdown */}
+            <div className="bg-white rounded-xl border border-gray-100 p-4">
+                <h2 className="text-sm font-semibold text-gray-700 mb-4">How customers are booking</h2>
+                <div className="grid grid-cols-3 gap-3 mb-4">
+                    <div className="bg-amber-50 rounded-xl p-3 text-center">
+                        <div className="text-2xl font-semibold text-amber-700">{sourceBreakdown.walkin}</div>
+                        <div className="text-xs text-amber-600 mt-0.5">Walk-ins</div>
+                    </div>
+                    <div className="bg-gray-50 rounded-xl p-3 text-center">
+                        <div className="text-2xl font-semibold text-gray-700">{sourceBreakdown.prebook}</div>
+                        <div className="text-xs text-gray-500 mt-0.5">Pre-booked</div>
+                    </div>
+                    <div className="bg-blue-50 rounded-xl p-3 text-center">
+                        <div className="text-2xl font-semibold text-blue-700">{sourceBreakdown.portal}</div>
+                        <div className="text-xs text-blue-500 mt-0.5">Portal bookings</div>
+                    </div>
+                </div>
+                {totalBookings > 0 && (
+                    <div>
+                        <div className="h-3 bg-gray-100 rounded-full overflow-hidden flex">
+                            {sourceBreakdown.walkin > 0 && (
+                                <div className="h-full bg-amber-400 transition-all"
+                                    style={{ width: Math.round(sourceBreakdown.walkin / totalBookings * 100) + '%' }} />
+                            )}
+                            {sourceBreakdown.prebook > 0 && (
+                                <div className="h-full bg-gray-400 transition-all"
+                                    style={{ width: Math.round(sourceBreakdown.prebook / totalBookings * 100) + '%' }} />
+                            )}
+                            {sourceBreakdown.portal > 0 && (
+                                <div className="h-full bg-blue-400 transition-all"
+                                    style={{ width: Math.round(sourceBreakdown.portal / totalBookings * 100) + '%' }} />
+                            )}
+                        </div>
+                        <div className="flex justify-between text-xs text-gray-400 mt-2">
+                            <span>Walk-in: {Math.round(sourceBreakdown.walkin / totalBookings * 100)}%</span>
+                            <span>Pre-booked: {Math.round(sourceBreakdown.prebook / totalBookings * 100)}%</span>
+                            <span>Portal: {Math.round(sourceBreakdown.portal / totalBookings * 100)}%</span>
+                        </div>
+                    </div>
+                )}
             </div>
 
             {/* Revenue trend + Payment mix */}
@@ -244,9 +301,9 @@ export default function Reports() {
                                 <CartesianGrid strokeDasharray="3 3" stroke="#F1EFE8" />
                                 <XAxis dataKey="month" tick={{ fontSize: 11, fill: '#888780' }} />
                                 <YAxis tick={{ fontSize: 11, fill: '#888780' }}
-                                    tickFormatter={v => `Rs.${(v / 1000).toFixed(0)}k`} />
+                                    tickFormatter={v => 'Rs.' + (v / 1000).toFixed(0) + 'k'} />
                                 <Tooltip
-                                    formatter={v => [`Rs.${v.toLocaleString('en-IN')}`, 'Revenue']}
+                                    formatter={v => ['Rs.' + v.toLocaleString('en-IN'), 'Revenue']}
                                     contentStyle={{ fontSize: 12, borderRadius: 8, border: '0.5px solid #E5E3DC' }} />
                                 <Line type="monotone" dataKey="revenue" stroke="#D4537E"
                                     strokeWidth={2} dot={{ fill: '#D4537E', r: 4 }} />
@@ -270,7 +327,7 @@ export default function Reports() {
                                         ))}
                                     </Pie>
                                     <Tooltip
-                                        formatter={v => [`Rs.${v.toLocaleString('en-IN')}`, '']}
+                                        formatter={v => ['Rs.' + v.toLocaleString('en-IN'), '']}
                                         contentStyle={{ fontSize: 12, borderRadius: 8 }} />
                                 </PieChart>
                             </ResponsiveContainer>
@@ -293,7 +350,7 @@ export default function Reports() {
                 </div>
             </div>
 
-            {/* Top services bar chart */}
+            {/* Top services */}
             <div className="bg-white rounded-xl border border-gray-100 p-4">
                 <h2 className="text-sm font-semibold text-gray-700 mb-4">Top services by revenue</h2>
                 {topServices.length === 0 ? (
@@ -304,26 +361,24 @@ export default function Reports() {
                             <BarChart data={topServices} layout="vertical">
                                 <CartesianGrid strokeDasharray="3 3" stroke="#F1EFE8" horizontal={false} />
                                 <XAxis type="number" tick={{ fontSize: 11, fill: '#888780' }}
-                                    tickFormatter={v => `Rs.${(v / 1000).toFixed(0)}k`} />
+                                    tickFormatter={v => 'Rs.' + (v / 1000).toFixed(0) + 'k'} />
                                 <YAxis type="category" dataKey="name" width={110}
                                     tick={{ fontSize: 11, fill: '#888780' }} />
                                 <Tooltip
-                                    formatter={v => [`Rs.${v.toLocaleString('en-IN')}`, 'Revenue']}
+                                    formatter={v => ['Rs.' + v.toLocaleString('en-IN'), 'Revenue']}
                                     contentStyle={{ fontSize: 12, borderRadius: 8 }} />
                                 <Bar dataKey="revenue" fill="#D4537E" radius={[0, 4, 4, 0]} />
                             </BarChart>
                         </ResponsiveContainer>
-
                         <div className="space-y-3">
                             {topServices.map((s, i) => (
                                 <div key={s.name} className="flex items-center gap-3">
-                                    <div className="w-6 h-6 rounded-full bg-pink-100 text-pink-700
-                    text-xs font-bold flex items-center justify-center flex-shrink-0">
+                                    <div className="w-6 h-6 rounded-full bg-pink-100 text-pink-700 text-xs font-bold flex items-center justify-center flex-shrink-0">
                                         {i + 1}
                                     </div>
                                     <div className="flex-1 min-w-0">
                                         <div className="text-sm font-medium text-gray-800 truncate">{s.name}</div>
-                                        <div className="text-xs text-gray-400">{s.count} times . {s.category}</div>
+                                        <div className="text-xs text-gray-400">{s.count} times - {s.category}</div>
                                     </div>
                                     <div className="text-sm font-semibold text-gray-800 flex-shrink-0">
                                         Rs.{s.revenue.toLocaleString('en-IN')}
@@ -360,8 +415,7 @@ export default function Reports() {
                                         <tr key={s.name} className="border-b border-gray-50 hover:bg-gray-50">
                                             <td className="py-3 px-3">
                                                 <div className="flex items-center gap-2">
-                                                    <div className="w-7 h-7 rounded-full bg-pink-100 flex items-center
-                            justify-center text-pink-700 font-bold text-xs flex-shrink-0">
+                                                    <div className="w-7 h-7 rounded-full bg-pink-100 flex items-center justify-center text-pink-700 font-bold text-xs flex-shrink-0">
                                                         {s.name.charAt(0).toUpperCase()}
                                                     </div>
                                                     <span className="font-medium text-gray-800">{s.name}</span>
@@ -377,9 +431,7 @@ export default function Reports() {
                                                 Rs.{s.revenue.toLocaleString('en-IN')}
                                             </td>
                                             <td className="py-3 px-3 text-gray-600">
-                                                {s.commission
-                                                    ? `Rs.${s.commission.toLocaleString('en-IN')}`
-                                                    : '-'}
+                                                {s.commission ? 'Rs.' + s.commission.toLocaleString('en-IN') : '-'}
                                             </td>
                                             <td className="py-3 px-3 w-32">
                                                 <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
@@ -407,7 +459,7 @@ export default function Reports() {
                             <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden mt-2">
                                 <div className="h-full rounded-full transition-all"
                                     style={{
-                                        width: `${Math.round((t.value / (tierDist.reduce((s, t) => s + t.value, 0) || 1)) * 100)}%`,
+                                        width: Math.round((t.value / (tierDist.reduce((s, t) => s + t.value, 0) || 1)) * 100) + '%',
                                         background: PIE_COLORS[i]
                                     }} />
                             </div>
@@ -415,6 +467,7 @@ export default function Reports() {
                     ))}
                 </div>
             </div>
+
         </div>
     )
 }

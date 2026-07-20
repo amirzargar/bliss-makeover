@@ -20,7 +20,7 @@ const STATUS_CAL = {
 
 const HOURS = Array.from({ length: 13 }, (_, i) => i + 8) // 8am to 8pm
 
-const emptyAppt = { customer_id: '', staff_id: '', service_id: '', scheduled_at: '', notes: '', status: 'confirmed', amount: '' }
+const emptyAppt = { customer_id: '', staff_id: '', service_id: '', scheduled_at: '', notes: '', status: 'confirmed', amount: '', booking_source: 'staff' }
 const emptyCustomer = { name: '', phone: '', email: '' }
 
 function getTodayLocal() {
@@ -583,6 +583,28 @@ export default function Appointments() {
                                 className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-pink-300" />
                         </div>
 
+                        {/* Booking source */}
+                        <div className="mb-4">
+                            <label className="text-xs font-medium text-gray-500 mb-1 block">Booking type</label>
+                            <div className="grid grid-cols-2 gap-2">
+                                {[
+                                    { value: 'staff', label: 'Pre-booked', desc: 'Called or messaged ahead' },
+                                    { value: 'walk_in', label: 'Walk-in', desc: 'Came directly to salon' },
+                                ].map(opt => (
+                                    <button key={opt.value}
+                                        onClick={() => setForm(f => ({ ...f, booking_source: opt.value }))}
+                                        className={`p-3 rounded-xl border text-left transition-colors ${(form.booking_source || 'staff') === opt.value
+                                                ? 'border-pink-300 bg-pink-50'
+                                                : 'border-gray-200 bg-white hover:border-pink-200'
+                                            }`}>
+                                        <div className="text-xs font-semibold text-gray-800">{opt.label}</div>
+                                        <div className="text-xs text-gray-400 mt-0.5">{opt.desc}</div>
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Notes */}
                         <div className="mb-5">
                             <label className="text-xs font-medium text-gray-500 mb-1 block">Notes (optional)</label>
                             <textarea value={form.notes}
@@ -652,9 +674,21 @@ function AppointmentCard({ a, onCheckout, onWhatsApp, onStatusChange }) {
                 </div>
                 <div className="text-right">
                     <div className="text-sm text-gray-700">{a.services?.name}</div>
-                    <span className="text-xs bg-pink-50 text-pink-600 px-2 py-0.5 rounded-full">
-                        {a.services?.category}
-                    </span>
+                    <div className="flex gap-1 justify-end mt-0.5 flex-wrap">
+                        <span className="text-xs bg-pink-50 text-pink-600 px-2 py-0.5 rounded-full">
+                            {a.services?.category}
+                        </span>
+                        {a.booking_source === 'walk_in' && (
+                            <span className="text-xs bg-amber-50 text-amber-600 px-2 py-0.5 rounded-full">
+                                Walk-in
+                            </span>
+                        )}
+                        {a.booking_source === 'portal' && (
+                            <span className="text-xs bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full">
+                                Portal
+                            </span>
+                        )}
+                    </div>
                 </div>
             </div>
 

@@ -999,7 +999,7 @@ function WhatsAppModal({ appointment: a, onClose }) {
     const reminderMsg = [
         'Hi ' + customerName + '!',
         '',
-        'This is a friendly reminder for your appointment at Bliss Makeover.',
+        'This is a friendly reminder for your appointment at Bliss Makeover By BBI.',
         '',
         'Service: ' + serviceName,
         'Date: ' + apptDate,
@@ -1009,20 +1009,20 @@ function WhatsAppModal({ appointment: a, onClose }) {
         'Please arrive 5 minutes early.',
         'See you soon!',
         '',
-        '- Bliss Makeover',
+        '- Bliss Makeover By BBI',
         'Hair | Makeup | Skin',
     ].join('\n')
 
     const thankYouMsg = [
         'Hi ' + customerName + '!',
         '',
-        'Thank you for visiting Bliss Makeover today.',
+        'Thank you for visiting Bliss Makeover By BBI today.',
         'We hope you loved your ' + serviceName + '!',
         '',
         'Your loyalty points have been updated.',
         'We look forward to seeing you again soon!',
         '',
-        '- Bliss Makeover',
+        '- Bliss Makeover By BBI',
         'Hair | Makeup | Skin',
     ].join('\n')
 
@@ -1034,20 +1034,20 @@ function WhatsAppModal({ appointment: a, onClose }) {
         'We would love to reschedule for you at your convenience.',
         'Please call or message us to book a new slot.',
         '',
-        '- Bliss Makeover',
+        '- Bliss Makeover By BBI',
         'Hair | Makeup | Skin',
     ].join('\n')
 
     const followUpMsg = [
         'Hi ' + customerName + '!',
         '',
-        'It has been a while since your last visit at Bliss Makeover.',
+        'It has been a while since your last visit at Bliss Makeover By BBI.',
         'We miss you!',
         '',
         'Book your next appointment and enjoy exclusive offers.',
         'Call or message us anytime.',
         '',
-        '- Bliss Makeover',
+        '- Bliss Makeover By BBI',
         'Hair | Makeup | Skin',
     ].join('\n')
 

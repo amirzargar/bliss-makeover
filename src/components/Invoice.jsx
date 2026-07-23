@@ -4,11 +4,11 @@ export default function Invoice({ transaction, appointment, onClose }) {
     const invoiceRef = useRef()
 
     const salonInfo = {
-        name: 'Bliss Makeover',
+        name: 'Bliss Makeover By BBI',
         tagline: 'Hair | Makeup | Skin',
-        address: 'Jammu, Jammu and Kashmir',
-        phone: '+91 9419XXXXXX',
-        email: 'blissmakeover@gmail.com',
+        address: 'Nagbal,90 Feet road',
+        phone: '+91 7006914136',
+        email: 'zargaraaamir@gmail.com',
         gstin: null,
     }
 
@@ -243,7 +243,7 @@ export default function Invoice({ transaction, appointment, onClose }) {
         doc.setFont('helvetica', 'bold')
         doc.setFontSize(12)
         doc.setTextColor(...pink)
-        doc.text('Thank you for visiting Bliss Makeover!', pageW / 2, y, { align: 'center' })
+        doc.text('Thank you for visiting Bliss Makeover By BBI!', pageW / 2, y, { align: 'center' })
         y += 6
 
         doc.setFont('helvetica', 'normal')

@@ -477,11 +477,11 @@ export default function ProductSales() {
 
 function ProductSaleInvoice({ sale, items, onClose }) {
     const salonInfo = {
-        name: 'Bliss Makeover',
+        name: 'Bliss Makeover By BBI',
         tagline: 'Hair | Makeup | Skin',
-        address: 'Jammu, Jammu and Kashmir',
-        phone: '+91 9419XXXXXX',
-        email: 'blissmakeover@gmail.com',
+        address: 'Nagbal,90 feet Road ',
+        phone: '+91 7006914136 ',
+        email: 'zargaraaamir@gmail.com',
     }
 
     const invoiceNumber = 'BMS-' +

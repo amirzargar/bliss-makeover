@@ -4,6 +4,55 @@ import Sidebar from './Sidebar'
 import Topbar from './Topbar'
 import BottomNav from './BottomNav'
 import { useAuthStore } from '../../store/authStore'
+import { supabase } from '../../lib/supabase'
+
+function ConnectionStatus() {
+    const [online, setOnline] = useState(navigator.onLine)
+    const [dbConnected, setDbConnected] = useState(true)
+    const [checking, setChecking] = useState(false)
+
+    useEffect(() => {
+        function handleOnline() { setOnline(true); checkDb() }
+        function handleOffline() { setOnline(false); setDbConnected(false) }
+
+        window.addEventListener('online', handleOnline)
+        window.addEventListener('offline', handleOffline)
+
+        const interval = setInterval(checkDb, 5 * 60 * 1000)
+
+        return () => {
+            window.removeEventListener('online', handleOnline)
+            window.removeEventListener('offline', handleOffline)
+            clearInterval(interval)
+        }
+    }, [])
+
+    async function checkDb() {
+        if (checking) return
+        setChecking(true)
+        try {
+            await supabase.from('services').select('id').limit(1)
+            setDbConnected(true)
+        } catch {
+            setDbConnected(false)
+        }
+        setChecking(false)
+    }
+
+    if (online && dbConnected) return null
+
+    return (
+        <div className={`fixed top-0 left-0 right-0 z-50 text-center py-1.5 text-xs font-medium ${!online ? 'bg-red-500 text-white' : 'bg-amber-400 text-white'
+            }`}>
+            {!online
+                ? 'No internet connection - please check your network'
+                : 'Reconnecting to database...'}
+            <button onClick={checkDb} className="ml-3 underline hover:no-underline">
+                Retry now
+            </button>
+        </div>
+    )
+}
 
 function InstallPrompt() {
     const [prompt, setPrompt] = useState(null)
@@ -39,16 +88,20 @@ function InstallPrompt() {
                         Add to your home screen for quick access
                     </div>
                 </div>
-                <button onClick={() => setShow(false)} className="text-gray-300 hover:text-gray-500 flex-shrink-0 text-lg font-bold">
+                <button
+                    onClick={() => setShow(false)}
+                    className="text-gray-300 hover:text-gray-500 flex-shrink-0 font-bold text-lg">
                     x
                 </button>
             </div>
             <div className="flex gap-2 mt-3">
-                <button onClick={() => setShow(false)}
+                <button
+                    onClick={() => setShow(false)}
                     className="flex-1 border border-gray-200 text-gray-500 py-1.5 rounded-lg text-xs hover:bg-gray-50">
                     Not now
                 </button>
-                <button onClick={install}
+                <button
+                    onClick={install}
                     className="flex-1 bg-pink-600 text-white py-1.5 rounded-lg text-xs font-medium hover:bg-pink-700">
                     Install App
                 </button>
@@ -62,15 +115,22 @@ export default function AppShell() {
 
     return (
         <div className="flex h-screen bg-gray-50 overflow-hidden">
+
+            <ConnectionStatus />
+
+            {/* Sidebar - desktop only */}
             <div className="hidden md:flex">
                 <Sidebar />
             </div>
 
             <div className="flex flex-col flex-1 overflow-hidden">
+
+                {/* Topbar - desktop only */}
                 <div className="hidden md:block">
                     <Topbar />
                 </div>
 
+                {/* Mobile topbar */}
                 <div className="flex md:hidden bg-white border-b border-gray-100 px-4 py-3 items-center justify-between flex-shrink-0">
                     <div>
                         <div className="text-sm font-semibold text-pink-700">Bliss Makeover</div>
@@ -94,15 +154,18 @@ export default function AppShell() {
                     </div>
                 </div>
 
+                {/* Main content */}
                 <main className="flex-1 overflow-y-auto p-4 md:p-6 pb-24 md:pb-6">
                     <Outlet />
                 </main>
 
+                {/* Bottom nav - mobile only */}
                 <div className="md:hidden">
                     <BottomNav />
                 </div>
 
                 <InstallPrompt />
+
             </div>
         </div>
     )

@@ -361,192 +361,221 @@ function CustomerImport() {
 }
 
 function ServiceImport() {
-  const emptyRow = { name:'', category:'Hair', duration_mins:60, price:'', description:'' }
-  const [rows,    setRows]    = useState([{ ...emptyRow }])
-  const [saving,  setSaving]  = useState(false)
-  const [results, setResults] = useState(null)
+    const emptyRow = { name: '', category: 'Hair', duration_mins: 60, price: '', description: '' }
+    const [rows, setRows] = useState([{ ...emptyRow }])
+    const [saving, setSaving] = useState(false)
+    const [results, setResults] = useState(null)
 
-  function addRow() {
-    setRows(prev => [...prev, { ...emptyRow }])
-  }
+    // Restore saved rows from session on mount
+    useEffect(() => {
+        const saved = sessionStorage.getItem('bulk_service_rows')
+        if (saved) {
+            try {
+                const parsed = JSON.parse(saved)
+                if (parsed && parsed.length > 0) setRows(parsed)
+            } catch {
+                // ignore
+            }
+        }
+    }, [])
 
-  function updateRow(index, field, value) {
-    setRows(prev => prev.map((r, i) => i === index ? { ...r, [field]: value } : r))
-  }
+    // Save rows to session on every change
+    useEffect(() => {
+        sessionStorage.setItem('bulk_service_rows', JSON.stringify(rows))
+    }, [rows])
 
-  function removeRow(index) {
-    if (rows.length === 1) return
-    setRows(prev => prev.filter((_, i) => i !== index))
-  }
-
-  function duplicateRow(index) {
-    const row = { ...rows[index] }
-    setRows(prev => [...prev.slice(0, index+1), row, ...prev.slice(index+1)])
-  }
-
-  async function importServices() {
-    const valid = rows.filter(r => r.name.trim() && r.price)
-    if (valid.length === 0) return alert('Add at least one service with name and price')
-    setSaving(true)
-
-    let imported = 0
-    let failed   = 0
-
-    for (const row of valid) {
-      const { error } = await supabase.from('services').insert({
-        name:          row.name.trim(),
-        category:      row.category,
-        duration_mins: Number(row.duration_mins) || 60,
-        price:         Number(row.price),
-        description:   row.description.trim() || null,
-        is_active:     true,
-      })
-      if (error) { failed++ } else { imported++ }
+    function addRow() {
+        setRows(prev => [...prev, { ...emptyRow }])
     }
 
-    setSaving(false)
-    setResults({ imported, failed, total: valid.length })
-  }
+    function updateRow(index, field, value) {
+        setRows(prev => prev.map((r, i) => i === index ? { ...r, [field]: value } : r))
+    }
 
-  function reset() {
-    setRows([{ ...emptyRow }])
-    setResults(null)
-  }
+    function removeRow(index) {
+        if (rows.length === 1) return
+        setRows(prev => prev.filter((_, i) => i !== index))
+    }
 
-  if (results) {
-    return (
-      <div className="space-y-4">
-        <div className="bg-green-50 border border-green-200 rounded-2xl p-6 text-center">
-          <div className="text-4xl mb-3">OK</div>
-          <h3 className="text-lg font-bold text-green-700 mb-4">Rate List Imported!</h3>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="bg-white rounded-xl p-3">
-              <div className="text-2xl font-bold text-green-600">{results.imported}</div>
-              <div className="text-xs text-gray-500">Services added</div>
-            </div>
-            <div className="bg-white rounded-xl p-3">
-              <div className="text-2xl font-bold text-red-400">{results.failed}</div>
-              <div className="text-xs text-gray-500">Failed</div>
-            </div>
-          </div>
-        </div>
-        <p className="text-xs text-gray-400 text-center">
-          All imported services are now active and available for booking.
-        </p>
-        <button onClick={reset}
-          className="w-full bg-pink-600 text-white py-3 rounded-xl text-sm font-semibold hover:bg-pink-700">
-          Import More Services
-        </button>
-      </div>
-    )
-  }
+    function duplicateRow(index) {
+        const row = { ...rows[index] }
+        setRows(prev => [...prev.slice(0, index + 1), row, ...prev.slice(index + 1)])
+    }
 
-  return (
-    <div className="space-y-4">
-      <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
-        <h3 className="text-sm font-semibold text-blue-700 mb-2">How to use</h3>
-        <div className="text-xs text-blue-600 space-y-1">
-          <p>1. Look at your rate list PDF</p>
-          <p>2. Enter each service below - name, category, duration and price</p>
-          <p>3. Click Duplicate to quickly copy a similar service</p>
-          <p>4. Click Import All when done</p>
-        </div>
-      </div>
+    async function importServices() {
+        const valid = rows.filter(r => r.name.trim() && r.price)
+        if (valid.length === 0) return alert('Add at least one service with name and price')
+        setSaving(true)
 
-      {/* Service rows */}
-      <div className="space-y-3">
-        {rows.map((row, i) => (
-          <div key={i} className="bg-white rounded-xl border border-gray-100 p-4">
-            <div className="flex items-center justify-between mb-3">
-              <span className="text-xs font-semibold text-gray-500">
-                Service {i+1}
-              </span>
-              <div className="flex gap-2">
-                <button onClick={() => duplicateRow(i)}
-                  className="text-xs text-blue-400 hover:text-blue-600">
-                  Duplicate
+        let imported = 0
+        let failed = 0
+
+        for (const row of valid) {
+            const { error } = await supabase.from('services').insert({
+                name: row.name.trim(),
+                category: row.category,
+                duration_mins: Number(row.duration_mins) || 60,
+                price: Number(row.price),
+                description: row.description.trim() || null,
+                is_active: true,
+            })
+            if (error) { failed++ } else { imported++ }
+        }
+
+        setSaving(false)
+        setResults({ imported, failed, total: valid.length })
+        sessionStorage.removeItem('bulk_service_rows')
+    }
+
+    function reset() {
+        setRows([{ ...emptyRow }])
+        setResults(null)
+        sessionStorage.removeItem('bulk_service_rows')
+    }
+
+    if (results) {
+        return (
+            <div className="space-y-4">
+                <div className="bg-green-50 border border-green-200 rounded-2xl p-6 text-center">
+                    <div className="text-4xl mb-3">OK</div>
+                    <h3 className="text-lg font-bold text-green-700 mb-4">Rate List Imported!</h3>
+                    <div className="grid grid-cols-2 gap-3">
+                        <div className="bg-white rounded-xl p-3">
+                            <div className="text-2xl font-bold text-green-600">{results.imported}</div>
+                            <div className="text-xs text-gray-500">Services added</div>
+                        </div>
+                        <div className="bg-white rounded-xl p-3">
+                            <div className="text-2xl font-bold text-red-400">{results.failed}</div>
+                            <div className="text-xs text-gray-500">Failed</div>
+                        </div>
+                    </div>
+                </div>
+                <p className="text-xs text-gray-400 text-center">
+                    All imported services are now active and available for booking.
+                </p>
+                <button onClick={reset}
+                    className="w-full bg-pink-600 text-white py-3 rounded-xl text-sm font-semibold hover:bg-pink-700">
+                    Import More Services
                 </button>
-                {rows.length > 1 && (
-                  <button onClick={() => removeRow(i)}
-                    className="text-xs text-red-400 hover:text-red-600">
-                    Remove
-                  </button>
+            </div>
+        )
+    }
+
+    const readyCount = rows.filter(r => r.name && r.price).length
+
+    return (
+        <div className="space-y-4">
+            <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+                <h3 className="text-sm font-semibold text-blue-700 mb-2">How to use</h3>
+                <div className="text-xs text-blue-600 space-y-1">
+                    <p>1. Look at your rate list PDF</p>
+                    <p>2. Enter each service below - name, category, duration and price</p>
+                    <p>3. Click Duplicate to quickly copy a similar service</p>
+                    <p>4. Your progress is saved automatically - safe to refresh</p>
+                    <p>5. Click Import All when done</p>
+                </div>
+            </div>
+
+            {/* Auto-save notice */}
+            <div className="bg-green-50 border border-green-200 rounded-xl px-3 py-2 flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-green-400 flex-shrink-0" />
+                <p className="text-xs text-green-700">
+                    Auto-saving your progress - safe to refresh or take a break
+                </p>
+            </div>
+
+            {/* Service rows */}
+            <div className="space-y-3">
+                {rows.map((row, i) => (
+                    <div key={i} className="bg-white rounded-xl border border-gray-100 p-4">
+                        <div className="flex items-center justify-between mb-3">
+                            <span className="text-xs font-semibold text-gray-500">
+                                Service {i + 1}
+                            </span>
+                            <div className="flex gap-2">
+                                <button onClick={() => duplicateRow(i)}
+                                    className="text-xs text-blue-400 hover:text-blue-600">
+                                    Duplicate
+                                </button>
+                                {rows.length > 1 && (
+                                    <button onClick={() => removeRow(i)}
+                                        className="text-xs text-red-400 hover:text-red-600">
+                                        Remove
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2 mb-2">
+                            <div className="col-span-2">
+                                <input
+                                    value={row.name}
+                                    onChange={e => updateRow(i, 'name', e.target.value)}
+                                    placeholder="Service name *"
+                                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-pink-300" />
+                            </div>
+                            <div>
+                                <select
+                                    value={row.category}
+                                    onChange={e => updateRow(i, 'category', e.target.value)}
+                                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-pink-300">
+                                    {CATEGORIES.map(c => <option key={c}>{c}</option>)}
+                                </select>
+                            </div>
+                            <div>
+                                <input
+                                    type="number"
+                                    value={row.price}
+                                    onChange={e => updateRow(i, 'price', e.target.value)}
+                                    placeholder="Price (Rs.) *"
+                                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-pink-300" />
+                            </div>
+                            <div>
+                                <input
+                                    type="number"
+                                    value={row.duration_mins}
+                                    onChange={e => updateRow(i, 'duration_mins', e.target.value)}
+                                    placeholder="Duration (mins)"
+                                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-pink-300" />
+                            </div>
+                            <div>
+                                <input
+                                    value={row.description}
+                                    onChange={e => updateRow(i, 'description', e.target.value)}
+                                    placeholder="Description (optional)"
+                                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-pink-300" />
+                            </div>
+                        </div>
+
+                        {row.name && row.price && (
+                            <div className="bg-pink-50 rounded-lg px-3 py-1.5 text-xs text-pink-600">
+                                {row.name} - {row.category} - {row.duration_mins} min - Rs.{Number(row.price).toLocaleString('en-IN')}
+                            </div>
+                        )}
+                    </div>
+                ))}
+            </div>
+
+            <button onClick={addRow}
+                className="w-full border-2 border-dashed border-gray-200 text-gray-400 py-3 rounded-xl text-sm hover:border-pink-300 hover:text-pink-400 transition-colors">
+                + Add another service
+            </button>
+
+            <div className="bg-gray-50 rounded-xl p-3 text-xs text-gray-500">
+                <span className="font-medium">{readyCount}</span> services ready to import
+                {rows.filter(r => !r.name || !r.price).length > 0 && (
+                    <span className="text-amber-500">
+                        {' '}({rows.filter(r => !r.name || !r.price).length} incomplete - will be skipped)
+                    </span>
                 )}
-              </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-2 mb-2">
-              <div className="col-span-2">
-                <input
-                  value={row.name}
-                  onChange={e => updateRow(i, 'name', e.target.value)}
-                  placeholder="Service name *"
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-pink-300" />
-              </div>
-              <div>
-                <select
-                  value={row.category}
-                  onChange={e => updateRow(i, 'category', e.target.value)}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-pink-300">
-                  {CATEGORIES.map(c => <option key={c}>{c}</option>)}
-                </select>
-              </div>
-              <div>
-                <input
-                  type="number"
-                  value={row.price}
-                  onChange={e => updateRow(i, 'price', e.target.value)}
-                  placeholder="Price (Rs.) *"
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-pink-300" />
-              </div>
-              <div>
-                <input
-                  type="number"
-                  value={row.duration_mins}
-                  onChange={e => updateRow(i, 'duration_mins', e.target.value)}
-                  placeholder="Duration (mins)"
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-pink-300" />
-              </div>
-              <div>
-                <input
-                  value={row.description}
-                  onChange={e => updateRow(i, 'description', e.target.value)}
-                  placeholder="Description (optional)"
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-pink-300" />
-              </div>
-            </div>
-
-            {row.name && row.price && (
-              <div className="bg-pink-50 rounded-lg px-3 py-1.5 text-xs text-pink-600">
-                {row.name} - {row.category} - {row.duration_mins} min - Rs.{Number(row.price).toLocaleString('en-IN')}
-              </div>
-            )}
-          </div>
-        ))}
-      </div>
-
-      <button onClick={addRow}
-        className="w-full border-2 border-dashed border-gray-200 text-gray-400 py-3 rounded-xl text-sm hover:border-pink-300 hover:text-pink-400 transition-colors">
-        + Add another service
-      </button>
-
-      <div className="bg-gray-50 rounded-xl p-3 text-xs text-gray-500">
-        <span className="font-medium">{rows.filter(r => r.name && r.price).length}</span> services ready to import
-        {rows.filter(r => !r.name || !r.price).length > 0 && (
-          <span className="text-amber-500">
-            {' '}({rows.filter(r => !r.name || !r.price).length} incomplete - will be skipped)
-          </span>
-        )}
-      </div>
-
-      <button
-        onClick={importServices}
-        disabled={saving || rows.filter(r => r.name && r.price).length === 0}
-        className="w-full bg-pink-600 text-white py-3 rounded-xl text-sm font-semibold hover:bg-pink-700 disabled:opacity-40">
-        {saving
-          ? 'Importing...'
-          : 'Import ' + rows.filter(r => r.name && r.price).length + ' Services'}
-      </button>
-    </div>
-  )
+            <button
+                onClick={importServices}
+                disabled={saving || readyCount === 0}
+                className="w-full bg-pink-600 text-white py-3 rounded-xl text-sm font-semibold hover:bg-pink-700 disabled:opacity-40">
+                {saving ? 'Importing...' : 'Import ' + readyCount + ' Services'}
+            </button>
+        </div>
+    )
 }

@@ -2,12 +2,13 @@ import { Link } from 'react-router-dom'
 import { useAuthStore } from '../store/authStore'
 
 const items = [
-    { to: '/product-sales', label: 'Product Sales', desc: 'Sell products without appointment' },
     { to: '/services', label: 'Services & Pricing', desc: 'Manage your service menu' },
+    { to: '/product-sales', label: 'Product Sales', desc: 'Sell products without appointment' },    
     { to: '/loyalty', label: 'Loyalty Points', desc: 'Customer points and tiers' },
     { to: '/offers', label: 'Offers & Discounts', desc: 'Create and manage offers' },
     { to: '/staff', label: 'Staff & Commission', desc: 'Team and payouts', adminOnly: true },
     { to: '/reports', label: 'Reports', desc: 'Business analytics', adminOnly: true },
+    { to: '/bulk-import', label: 'Bulk Import', desc: 'Import customers and rate list', adminOnly: true },
 ]
 
 export default function More() {

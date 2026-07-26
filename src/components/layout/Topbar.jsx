@@ -12,6 +12,7 @@ const PAGE_TITLES = {
     '/staff': 'Staff & Commission',
     '/reports': 'Reports',
     '/product-sales': 'Product Sales',
+    '/bulk-import': 'Bulk Import',
 }
 
 export default function Topbar() {

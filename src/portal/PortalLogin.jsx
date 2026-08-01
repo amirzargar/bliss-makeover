@@ -8,8 +8,6 @@ function generateToken() {
 }
 
 function hashPassword(password) {
-    // Simple but consistent hash for demo
-    // In production use bcrypt via edge function
     let hash = 0
     for (let i = 0; i < password.length; i++) {
         const char = password.charCodeAt(i)
@@ -20,7 +18,7 @@ function hashPassword(password) {
 }
 
 export default function PortalLogin({ onLogin }) {
-    const [mode, setMode] = useState('login') // login | signup | claim | forgot
+    const [mode, setMode] = useState('login')
     const [phone, setPhone] = useState('')
     const [email, setEmail] = useState('')
     const [name, setName] = useState('')
@@ -28,7 +26,6 @@ export default function PortalLogin({ onLogin }) {
     const [confirm, setConfirm] = useState('')
     const [error, setError] = useState('')
     const [loading, setLoading] = useState(false)
-    const [success, setSuccess] = useState('')
 
     async function handleLogin() {
         if (!phone.trim() && !email.trim()) return setError('Enter your phone or email')
@@ -37,7 +34,6 @@ export default function PortalLogin({ onLogin }) {
         setError('')
 
         const hashed = hashPassword(password)
-
         let query = supabase.from('customers').select('*').eq('portal_password', hashed)
         if (phone.trim()) {
             query = query.eq('phone', phone.trim())
@@ -48,7 +44,7 @@ export default function PortalLogin({ onLogin }) {
         const { data } = await query.single()
 
         if (!data) {
-            setError('Invalid phone/email or password. If you forgot your password, use the link below.')
+            setError('Invalid phone or email or password. Please try again.')
             setLoading(false)
             return
         }
@@ -61,7 +57,6 @@ export default function PortalLogin({ onLogin }) {
 
         const token = generateToken()
         const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
-
         await supabase.from('customer_sessions').insert({
             customer_id: data.id,
             token,
@@ -81,28 +76,22 @@ export default function PortalLogin({ onLogin }) {
         setLoading(true)
         setError('')
 
-        // Check if phone already exists
         const { data: existing } = await supabase
-            .from('customers')
-            .select('id, portal_password')
-            .eq('phone', phone.trim())
-            .single()
+            .from('customers').select('id, portal_password').eq('phone', phone.trim()).single()
 
         if (existing) {
             if (existing.portal_password) {
-                setError('An account with this phone already exists. Please log in.')
+                setError('An account with this phone already exists. Please sign in.')
             } else {
-                setError('You are already registered at our salon. Click "Already visited us?" to set your password.')
+                setError('You are already registered at our salon. Use "Already visited us?" to set your password.')
             }
             setLoading(false)
             return
         }
 
         const hashed = hashPassword(password)
-
         const { data: newCustomer, error: err } = await supabase
-            .from('customers')
-            .insert({
+            .from('customers').insert({
                 name: name.trim(),
                 phone: phone.trim(),
                 email: email.trim().toLowerCase() || null,
@@ -110,9 +99,7 @@ export default function PortalLogin({ onLogin }) {
                 portal_active: true,
                 source: 'portal',
                 portal_joined: new Date().toISOString(),
-            })
-            .select()
-            .single()
+            }).select().single()
 
         if (err) {
             setError('Could not create account: ' + err.message)
@@ -122,7 +109,6 @@ export default function PortalLogin({ onLogin }) {
 
         const token = generateToken()
         const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
-
         await supabase.from('customer_sessions').insert({
             customer_id: newCustomer.id,
             token,
@@ -142,10 +128,7 @@ export default function PortalLogin({ onLogin }) {
         setError('')
 
         const { data: existing } = await supabase
-            .from('customers')
-            .select('*')
-            .eq('phone', phone.trim())
-            .single()
+            .from('customers').select('*').eq('phone', phone.trim()).single()
 
         if (!existing) {
             setError('No account found with this phone number. Please sign up instead.')
@@ -154,13 +137,12 @@ export default function PortalLogin({ onLogin }) {
         }
 
         if (existing.portal_password) {
-            setError('This account already has a password. Please log in or use forgot password.')
+            setError('This account already has a password. Please sign in.')
             setLoading(false)
             return
         }
 
         const hashed = hashPassword(password)
-
         await supabase.from('customers').update({
             portal_password: hashed,
             portal_active: true,
@@ -169,7 +151,6 @@ export default function PortalLogin({ onLogin }) {
 
         const token = generateToken()
         const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
-
         await supabase.from('customer_sessions').insert({
             customer_id: existing.id,
             token,
@@ -181,230 +162,253 @@ export default function PortalLogin({ onLogin }) {
     }
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-pink-50 to-pink-100 flex items-center justify-center p-4">
-            <div className="bg-white rounded-2xl shadow-lg w-full max-w-sm p-8">
+        <div className="min-h-screen bg-pink-50 flex flex-col">
 
-                {/* Logo */}
-                <div className="text-center mb-8">
-                    <div className="text-3xl font-bold text-pink-700 mb-1">Bliss Makeover</div>
-                    <div className="text-sm text-gray-400">Hair | Makeup | Skin</div>
-                    <div className="text-xs text-pink-400 mt-2 font-medium">Customer Portal</div>
+            {/* Hero header */}
+            <div className="bg-white border-b border-pink-100 px-6 py-8 text-center">
+                <div className="w-20 h-20 rounded-2xl overflow-hidden mx-auto mb-4 border-2 border-pink-100 shadow-sm">
+                    <img
+                        src="/icons/icon-192x192.png"
+                        alt="Bliss Makeover"
+                        className="w-full h-full object-cover" />
                 </div>
+                <h1 className="text-2xl font-semibold text-gray-900 mb-1">Bliss Makeover</h1>
+                <p className="text-sm text-pink-400 tracking-widest uppercase mb-1">
+                    Where Elegance Meets Expertise
+                </p>
+                <p className="text-xs text-gray-400">Nagbal Chowk, Bhat Complex, Jammu</p>
+            </div>
 
-                {/* Tabs */}
-                <div className="flex rounded-xl bg-gray-100 p-1 mb-6">
-                    <button
-                        onClick={() => { setMode('login'); setError('') }}
-                        className={`flex-1 py-2 rounded-lg text-xs font-medium transition-colors ${mode === 'login' ? 'bg-white text-pink-700 shadow-sm' : 'text-gray-500'
-                            }`}>
-                        Sign In
-                    </button>
-                    <button
-                        onClick={() => { setMode('signup'); setError('') }}
-                        className={`flex-1 py-2 rounded-lg text-xs font-medium transition-colors ${mode === 'signup' ? 'bg-white text-pink-700 shadow-sm' : 'text-gray-500'
-                            }`}>
-                        Sign Up
-                    </button>
-                </div>
+            {/* Main card */}
+            <div className="flex-1 flex items-start justify-center px-4 pt-6 pb-8">
+                <div className="bg-white rounded-2xl shadow-sm border border-pink-100 w-full max-w-sm p-6">
 
-                {/* Error */}
-                {error && (
-                    <div className="bg-red-50 border border-red-200 rounded-xl p-3 mb-4">
-                        <p className="text-xs text-red-600">{error}</p>
-                    </div>
-                )}
-
-                {/* Success */}
-                {success && (
-                    <div className="bg-green-50 border border-green-200 rounded-xl p-3 mb-4">
-                        <p className="text-xs text-green-600">{success}</p>
-                    </div>
-                )}
-
-                {/* LOGIN FORM */}
-                {mode === 'login' && (
-                    <div className="space-y-3">
-                        <div>
-                            <label className="text-xs text-gray-500 mb-1 block">Phone or Email</label>
-                            <input
-                                value={phone}
-                                onChange={e => setPhone(e.target.value)}
-                                placeholder="9419XXXXXX or email@example.com"
-                                className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-pink-300" />
+                    {/* Mode tabs */}
+                    {(mode === 'login' || mode === 'signup') && (
+                        <div className="flex bg-pink-50 rounded-xl p-1 mb-5">
+                            <button
+                                onClick={() => { setMode('login'); setError('') }}
+                                className={`flex-1 py-2 rounded-lg text-xs font-medium transition-colors ${mode === 'login'
+                                        ? 'bg-white text-pink-700 shadow-sm'
+                                        : 'text-gray-400 hover:text-gray-600'
+                                    }`}>
+                                Sign In
+                            </button>
+                            <button
+                                onClick={() => { setMode('signup'); setError('') }}
+                                className={`flex-1 py-2 rounded-lg text-xs font-medium transition-colors ${mode === 'signup'
+                                        ? 'bg-white text-pink-700 shadow-sm'
+                                        : 'text-gray-400 hover:text-gray-600'
+                                    }`}>
+                                Sign Up
+                            </button>
                         </div>
-                        <div>
-                            <label className="text-xs text-gray-500 mb-1 block">Password</label>
-                            <input
-                                type="password"
-                                value={password}
-                                onChange={e => setPassword(e.target.value)}
-                                placeholder="Your password"
-                                className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-pink-300" />
-                        </div>
+                    )}
+
+                    {/* Back button for claim/forgot */}
+                    {(mode === 'claim' || mode === 'forgot') && (
                         <button
-                            onClick={handleLogin}
-                            disabled={loading}
-                            className="w-full bg-pink-600 text-white py-3 rounded-xl text-sm font-semibold hover:bg-pink-700 disabled:opacity-40 mt-2">
-                            {loading ? 'Signing in...' : 'Sign In'}
+                            onClick={() => { setMode('login'); setError('') }}
+                            className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600 mb-4">
+                            &lt; Back to sign in
                         </button>
-                        <div className="flex flex-col gap-2 pt-2">
+                    )}
+
+                    {/* Error */}
+                    {error && (
+                        <div className="bg-red-50 border border-red-200 rounded-xl p-3 mb-4">
+                            <p className="text-xs text-red-600">{error}</p>
+                        </div>
+                    )}
+
+                    {/* LOGIN */}
+                    {mode === 'login' && (
+                        <div className="space-y-3">
+                            <div>
+                                <label className="text-xs text-gray-500 mb-1 block">Phone or email</label>
+                                <input
+                                    value={phone}
+                                    onChange={e => setPhone(e.target.value)}
+                                    placeholder="9419XXXXXX or email@example.com"
+                                    className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-pink-300 bg-gray-50" />
+                            </div>
+                            <div>
+                                <label className="text-xs text-gray-500 mb-1 block">Password</label>
+                                <input
+                                    type="password"
+                                    value={password}
+                                    onChange={e => setPassword(e.target.value)}
+                                    placeholder="Your password"
+                                    className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-pink-300 bg-gray-50" />
+                            </div>
+                            <button
+                                onClick={handleLogin}
+                                disabled={loading}
+                                className="w-full bg-pink-600 text-white py-3 rounded-xl text-sm font-medium hover:bg-pink-700 disabled:opacity-40 mt-1">
+                                {loading ? 'Signing in...' : 'Sign In'}
+                            </button>
+                            <div className="flex flex-col gap-2 pt-1">
+                                <button
+                                    onClick={() => { setMode('claim'); setError('') }}
+                                    className="text-xs text-pink-500 hover:text-pink-700 text-center">
+                                    Already visited us? Set your password
+                                </button>
+                                <button
+                                    onClick={() => { setMode('forgot'); setError('') }}
+                                    className="text-xs text-gray-400 hover:text-gray-600 text-center">
+                                    Forgot password?
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* SIGNUP */}
+                    {mode === 'signup' && (
+                        <div className="space-y-3">
+                            <div>
+                                <label className="text-xs text-gray-500 mb-1 block">Full name *</label>
+                                <input
+                                    value={name}
+                                    onChange={e => setName(e.target.value)}
+                                    placeholder="Your full name"
+                                    className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-pink-300 bg-gray-50" />
+                            </div>
+                            <div>
+                                <label className="text-xs text-gray-500 mb-1 block">Phone number *</label>
+                                <input
+                                    value={phone}
+                                    onChange={e => setPhone(e.target.value)}
+                                    placeholder="9419XXXXXX"
+                                    className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-pink-300 bg-gray-50" />
+                            </div>
+                            <div>
+                                <label className="text-xs text-gray-500 mb-1 block">Email (optional)</label>
+                                <input
+                                    value={email}
+                                    onChange={e => setEmail(e.target.value)}
+                                    placeholder="email@example.com"
+                                    className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-pink-300 bg-gray-50" />
+                            </div>
+                            <div>
+                                <label className="text-xs text-gray-500 mb-1 block">Password *</label>
+                                <input
+                                    type="password"
+                                    value={password}
+                                    onChange={e => setPassword(e.target.value)}
+                                    placeholder="Min 6 characters"
+                                    className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-pink-300 bg-gray-50" />
+                            </div>
+                            <div>
+                                <label className="text-xs text-gray-500 mb-1 block">Confirm password *</label>
+                                <input
+                                    type="password"
+                                    value={confirm}
+                                    onChange={e => setConfirm(e.target.value)}
+                                    placeholder="Repeat your password"
+                                    className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-pink-300 bg-gray-50" />
+                            </div>
+                            <button
+                                onClick={handleSignup}
+                                disabled={loading}
+                                className="w-full bg-pink-600 text-white py-3 rounded-xl text-sm font-medium hover:bg-pink-700 disabled:opacity-40 mt-1">
+                                {loading ? 'Creating account...' : 'Create Account'}
+                            </button>
                             <button
                                 onClick={() => { setMode('claim'); setError('') }}
-                                className="text-xs text-pink-500 hover:text-pink-700 text-center">
+                                className="text-xs text-pink-500 hover:text-pink-700 text-center w-full pt-1">
                                 Already visited us? Set your password
                             </button>
+                        </div>
+                    )}
+
+                    {/* CLAIM */}
+                    {mode === 'claim' && (
+                        <div className="space-y-3">
+                            <div className="bg-pink-50 border border-pink-200 rounded-xl p-3 mb-1">
+                                <p className="text-xs text-pink-700">
+                                    Already visited Bliss Makeover? Enter your registered phone number to set a password and access your full profile and history.
+                                </p>
+                            </div>
+                            <div>
+                                <label className="text-xs text-gray-500 mb-1 block">Registered phone number *</label>
+                                <input
+                                    value={phone}
+                                    onChange={e => setPhone(e.target.value)}
+                                    placeholder="9419XXXXXX"
+                                    className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-pink-300 bg-gray-50" />
+                            </div>
+                            <div>
+                                <label className="text-xs text-gray-500 mb-1 block">Set new password *</label>
+                                <input
+                                    type="password"
+                                    value={password}
+                                    onChange={e => setPassword(e.target.value)}
+                                    placeholder="Min 6 characters"
+                                    className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-pink-300 bg-gray-50" />
+                            </div>
+                            <div>
+                                <label className="text-xs text-gray-500 mb-1 block">Confirm password *</label>
+                                <input
+                                    type="password"
+                                    value={confirm}
+                                    onChange={e => setConfirm(e.target.value)}
+                                    placeholder="Repeat password"
+                                    className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-pink-300 bg-gray-50" />
+                            </div>
                             <button
-                                onClick={() => { setMode('forgot'); setError('') }}
-                                className="text-xs text-gray-400 hover:text-gray-600 text-center">
-                                Forgot password?
+                                onClick={handleClaim}
+                                disabled={loading}
+                                className="w-full bg-pink-600 text-white py-3 rounded-xl text-sm font-medium hover:bg-pink-700 disabled:opacity-40">
+                                {loading ? 'Setting up...' : 'Set Password and Sign In'}
                             </button>
                         </div>
-                    </div>
-                )}
+                    )}
 
-                {/* SIGNUP FORM */}
-                {mode === 'signup' && (
-                    <div className="space-y-3">
-                        <div>
-                            <label className="text-xs text-gray-500 mb-1 block">Full name *</label>
-                            <input
-                                value={name}
-                                onChange={e => setName(e.target.value)}
-                                placeholder="Your full name"
-                                className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-pink-300" />
+                    {/* FORGOT */}
+                    {mode === 'forgot' && (
+                        <div className="space-y-4">
+                            <div className="bg-pink-50 border border-pink-200 rounded-2xl p-5 text-center">
+                                <div className="w-12 h-12 bg-pink-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                                    <span className="text-pink-600 text-xl">?</span>
+                                </div>
+                                <p className="text-sm font-medium text-gray-800 mb-2">Forgot your password?</p>
+                                <p className="text-xs text-gray-500 mb-4">
+                                    WhatsApp us with your registered phone number and we will reset your password within a few minutes.
+                                </p>
+                                <button
+                                    onClick={() => {
+                                        const msg = 'Hi Bliss Makeover! I forgot my portal password. My registered phone is: '
+                                        window.open('https://wa.me/917006604551?text=' + encodeURIComponent(msg), '_blank')
+                                    }}
+                                    className="bg-green-500 text-white px-6 py-2.5 rounded-xl text-sm font-medium hover:bg-green-600">
+                                    WhatsApp Us
+                                </button>
+                                <p className="text-xs text-gray-400 mt-3">Available Mon-Sat, 9am to 8pm</p>
+                            </div>
                         </div>
-                        <div>
-                            <label className="text-xs text-gray-500 mb-1 block">Phone number *</label>
-                            <input
-                                value={phone}
-                                onChange={e => setPhone(e.target.value)}
-                                placeholder="9419XXXXXX"
-                                className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-pink-300" />
-                        </div>
-                        <div>
-                            <label className="text-xs text-gray-500 mb-1 block">Email (optional)</label>
-                            <input
-                                value={email}
-                                onChange={e => setEmail(e.target.value)}
-                                placeholder="email@example.com"
-                                className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-pink-300" />
-                        </div>
-                        <div>
-                            <label className="text-xs text-gray-500 mb-1 block">Password *</label>
-                            <input
-                                type="password"
-                                value={password}
-                                onChange={e => setPassword(e.target.value)}
-                                placeholder="Min 6 characters"
-                                className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-pink-300" />
-                        </div>
-                        <div>
-                            <label className="text-xs text-gray-500 mb-1 block">Confirm password *</label>
-                            <input
-                                type="password"
-                                value={confirm}
-                                onChange={e => setConfirm(e.target.value)}
-                                placeholder="Repeat your password"
-                                className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-pink-300" />
-                        </div>
-                        <button
-                            onClick={handleSignup}
-                            disabled={loading}
-                            className="w-full bg-pink-600 text-white py-3 rounded-xl text-sm font-semibold hover:bg-pink-700 disabled:opacity-40 mt-2">
-                            {loading ? 'Creating account...' : 'Create Account'}
-                        </button>
-                        <button
-                            onClick={() => { setMode('claim'); setError('') }}
-                            className="text-xs text-pink-500 hover:text-pink-700 text-center w-full pt-1">
-                            Already visited us? Set your password
-                        </button>
-                    </div>
-                )}
+                    )}
+                </div>
+            </div>
 
-                {/* CLAIM EXISTING ACCOUNT */}
-                {mode === 'claim' && (
-                    <div className="space-y-3">
-                        <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 mb-2">
-                            <p className="text-xs text-blue-700 font-medium">
-                                Already visited Bliss Makeover? Enter your registered phone number to set a password and access your profile.
-                            </p>
-                        </div>
-                        <div>
-                            <label className="text-xs text-gray-500 mb-1 block">Registered phone number *</label>
-                            <input
-                                value={phone}
-                                onChange={e => setPhone(e.target.value)}
-                                placeholder="9419XXXXXX"
-                                className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-pink-300" />
-                        </div>
-                        <div>
-                            <label className="text-xs text-gray-500 mb-1 block">Set new password *</label>
-                            <input
-                                type="password"
-                                value={password}
-                                onChange={e => setPassword(e.target.value)}
-                                placeholder="Min 6 characters"
-                                className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-pink-300" />
-                        </div>
-                        <div>
-                            <label className="text-xs text-gray-500 mb-1 block">Confirm password *</label>
-                            <input
-                                type="password"
-                                value={confirm}
-                                onChange={e => setConfirm(e.target.value)}
-                                placeholder="Repeat password"
-                                className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-pink-300" />
-                        </div>
-                        <button
-                            onClick={handleClaim}
-                            disabled={loading}
-                            className="w-full bg-pink-600 text-white py-3 rounded-xl text-sm font-semibold hover:bg-pink-700 disabled:opacity-40">
-                            {loading ? 'Setting up...' : 'Set Password and Sign In'}
-                        </button>
-                        <button
-                            onClick={() => { setMode('login'); setError('') }}
-                            className="text-xs text-gray-400 hover:text-gray-600 text-center w-full">
-                            Back to sign in
-                        </button>
-                    </div>
-                )}
+            {/* Blusha by Insha teaser */}
+            <div className="px-4 pb-6">
+                <div className="bg-white border border-pink-100 rounded-2xl p-4 max-w-sm mx-auto text-center">
+                    <p className="text-xs text-gray-400 uppercase tracking-widest mb-2">Also by Insha Feroz</p>
+                    <p className="text-base font-semibold text-gray-800 mb-1">Blusha by Insha</p>
+                    <p className="text-xs text-gray-500 mb-3">
+                        Professional bridal and editorial makeup artistry. Pre-weddings, photoshoots and special occasions.
+                    </p>
+                    <button
+                        onClick={() => window.open('https://blissmakeover.framer.website', '_blank')}
+                        className="text-xs text-pink-600 border border-pink-200 px-4 py-2 rounded-lg hover:bg-pink-50 transition-colors">
+                        Visit Blusha by Insha
+                    </button>
+                </div>
+            </div>
 
-                {/* FORGOT PASSWORD */}
-                {mode === 'forgot' && (
-                    <div className="space-y-4">
-                        <div className="bg-pink-50 border border-pink-200 rounded-xl p-4 text-center">
-                            <p className="text-2xl mb-2">?</p>
-                            <p className="text-sm font-semibold text-pink-700 mb-2">
-                                Forgot your password?
-                            </p>
-                            <p className="text-xs text-gray-500 mb-3">
-                                Please WhatsApp us with your registered phone number and we will reset your password for you within a few minutes.
-                            </p>
-                            <button
-                                onClick={() => {
-                                    const msg = 'Hi Bliss Makeover! I forgot my portal password. My registered phone is: '
-                                    window.open('https://wa.me/917006604551?text=' + encodeURIComponent(msg), '_blank')
-                                }}
-                                className="inline-block bg-green-500 text-white px-5 py-2.5 rounded-xl text-sm font-semibold hover:bg-green-600">
-                                WhatsApp Us
-                            </button>
-                            <p className="text-xs text-gray-400 mt-3">
-                                Available: Mon-Sat 9am to 8pm
-                            </p>
-                        </div>
-                        <button
-                            onClick={() => { setMode('login'); setError('') }}
-                            className="text-xs text-gray-400 hover:text-gray-600 text-center w-full">
-                            Back to sign in
-                        </button>
-                    </div>
-                )}
-                  
-
-            <p className="text-center text-xs text-gray-300 mt-6">
-                Bliss Makeover By BBI
+            <p className="text-center text-xs text-gray-300 pb-4">
+                Bliss Makeover - Nagbal Chowk, Jammu
             </p>
         </div>
-    </div >
-  )
+    )
 }

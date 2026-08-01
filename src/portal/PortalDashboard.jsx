@@ -9,137 +9,104 @@ const TIERS = {
     platinum: { label: 'Platinum', bg: 'bg-pink-100', text: 'text-pink-700', next: null, needVisits: 0, needSpend: 0 },
 }
 
+function hashPassword(password) {
+    let hash = 0
+    for (let i = 0; i < password.length; i++) {
+        const char = password.charCodeAt(i)
+        hash = ((hash << 5) - hash) + char
+        hash = hash & hash
+    }
+    return 'h_' + Math.abs(hash).toString(36) + '_' + password.length
+}
+
 export default function PortalDashboard({ customer, onLogout, onCustomerUpdate }) {
     const [tab, setTab] = useState('home')
     const [appointments, setAppointments] = useState([])
     const [offers, setOffers] = useState([])
     const [loyaltyEvents, setLoyaltyEvents] = useState([])
     const [suggestions, setSuggestions] = useState([])
-    const [services, setServices] = useState([])
     const [loading, setLoading] = useState(false)
     const [showBooking, setShowBooking] = useState(false)
 
-    useEffect(() => {
-        fetchData()
-    }, [customer.id])
+    useEffect(() => { fetchData() }, [customer.id])
 
     async function fetchData() {
         setLoading(true)
         const today = new Date().toISOString().split('T')[0]
-
         const [appts, offersData, loyalty, svcs] = await Promise.all([
             supabase.from('appointments')
-                .select('*, services(name, category, duration_mins, price), users(name)')
+                .select('*, services(name,category,duration_mins,price), users(name)')
                 .eq('customer_id', customer.id)
                 .order('scheduled_at', { ascending: false })
                 .limit(20),
-
             supabase.from('offers')
-                .select('*')
-                .eq('is_active', true)
-                .lte('start_date', today)
-                .gte('end_date', today)
+                .select('*').eq('is_active', true)
+                .lte('start_date', today).gte('end_date', today)
                 .order('created_at', { ascending: false }),
-
             supabase.from('loyalty_events')
-                .select('*')
-                .eq('customer_id', customer.id)
-                .order('created_at', { ascending: false })
-                .limit(15),
-
+                .select('*').eq('customer_id', customer.id)
+                .order('created_at', { ascending: false }).limit(15),
             supabase.from('services')
-                .select('*')
-                .eq('is_active', true)
-                .order('name'),
+                .select('*').eq('is_active', true).order('name'),
         ])
-
         setAppointments(appts.data || [])
         setOffers(offersData.data || [])
         setLoyaltyEvents(loyalty.data || [])
-        setServices(svcs.data || [])
-
-        // Generate personalized suggestions
         generateSuggestions(appts.data || [], svcs.data || [])
         setLoading(false)
     }
 
     function generateSuggestions(appts, svcs) {
-        if (appts.length === 0) {
-            setSuggestions(svcs.slice(0, 3))
-            return
-        }
-
-        // Count which categories customer books most
+        if (appts.length === 0) { setSuggestions(svcs.slice(0, 3)); return }
         const catCount = {}
         appts.forEach(a => {
             const cat = a.services?.category
             if (cat) catCount[cat] = (catCount[cat] || 0) + 1
         })
-
-        // Sort categories by frequency
-        const topCats = Object.entries(catCount)
-            .sort((a, b) => b[1] - a[1])
-            .map(([cat]) => cat)
-
-        // Find services in top categories not recently booked
-        const recentServiceIds = appts.slice(0, 3).map(a => a.service_id)
-        let suggested = svcs.filter(s =>
-            topCats.includes(s.category) && !recentServiceIds.includes(s.id)
-        )
-
-        // Check if it's time to rebook (last same-category booking > 4 weeks ago)
+        const topCats = Object.entries(catCount).sort((a, b) => b[1] - a[1]).map(([cat]) => cat)
+        const recentIds = appts.slice(0, 3).map(a => a.service_id)
         const fourWeeksAgo = new Date(Date.now() - 28 * 24 * 60 * 60 * 1000)
-        const lastBookingByCategory = {}
+        const lastByCategory = {}
         appts.forEach(a => {
             const cat = a.services?.category
-            const date = new Date(a.scheduled_at)
-            if (!lastBookingByCategory[cat] || date > lastBookingByCategory[cat]) {
-                lastBookingByCategory[cat] = date
-            }
+            const d = new Date(a.scheduled_at)
+            if (!lastByCategory[cat] || d > lastByCategory[cat]) lastByCategory[cat] = d
         })
-
-        // Add rebooking suggestions for overdue categories
-        const overdueServices = svcs.filter(s => {
-            const lastBooked = lastBookingByCategory[s.category]
-            return lastBooked && lastBooked < fourWeeksAgo
-        })
-
-        const combined = [...new Map(
-            [...overdueServices, ...suggested].map(s => [s.id, s])
-        ).values()].slice(0, 4)
-
+        const overdue = svcs.filter(s => lastByCategory[s.category] && lastByCategory[s.category] < fourWeeksAgo)
+        const suggested = svcs.filter(s => topCats.includes(s.category) && !recentIds.includes(s.id))
+        const combined = [...new Map([...overdue, ...suggested].map(s => [s.id, s])).values()].slice(0, 4)
         setSuggestions(combined.length > 0 ? combined : svcs.slice(0, 3))
     }
 
     async function refreshCustomer() {
-        const { data } = await supabase
-            .from('customers')
-            .select('*')
-            .eq('id', customer.id)
-            .single()
+        const { data } = await supabase.from('customers').select('*').eq('id', customer.id).single()
         if (data) onCustomerUpdate(data)
     }
 
+    async function cancelAppointment(id) {
+        if (!confirm('Cancel this appointment? This cannot be undone.')) return
+        await supabase.from('appointments').update({ status: 'cancelled' }).eq('id', id)
+        fetchData()
+    }
+
     const tier = TIERS[customer.loyalty_tier] || TIERS.basic
-    const upcoming = appointments.filter(a =>
-        new Date(a.scheduled_at) >= new Date() && a.status !== 'cancelled'
-    )
-    const past = appointments.filter(a =>
-        new Date(a.scheduled_at) < new Date() || a.status === 'completed'
-    )
+    const upcoming = appointments.filter(a => new Date(a.scheduled_at) >= new Date() && a.status !== 'cancelled')
     const pointsValue = Math.floor((customer.loyalty_points || 0) / 100) * 10
 
     return (
-        <div className="min-h-screen bg-gray-50">
+        <div className="min-h-screen bg-pink-50">
 
             {/* Header */}
-            <div className="bg-white border-b border-gray-100 sticky top-0 z-30">
+            <div className="bg-white border-b border-pink-100 sticky top-0 z-30">
                 <div className="max-w-lg mx-auto px-4 py-3 flex items-center justify-between">
-                    <div>
-                        <div className="text-sm font-bold text-pink-700">Bliss Makeover</div>
-                        <div className="text-xs text-gray-400">Customer Portal</div>
+                    <div className="flex items-center gap-2">
+                        <img src="/icons/icon-192x192.png" alt="Bliss" className="w-7 h-7 rounded-lg object-cover" />
+                        <div>
+                            <div className="text-sm font-semibold text-pink-700">Bliss Makeover</div>
+                            <div className="text-xs text-gray-400">Customer Portal</div>
+                        </div>
                     </div>
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-2">
                         <span className="text-xs text-gray-600">{customer.name.split(' ')[0]}</span>
                         <button onClick={onLogout}
                             className="text-xs text-gray-400 hover:text-gray-600 border border-gray-200 px-2 py-1 rounded-lg">
@@ -151,74 +118,69 @@ export default function PortalDashboard({ customer, onLogout, onCustomerUpdate }
 
             <div className="max-w-lg mx-auto px-4 py-4 pb-24">
 
-                {/* ?? HOME TAB ?? */}
+                {/* HOME TAB */}
                 {tab === 'home' && (
                     <div className="space-y-4">
 
-                        {/* Welcome + tier card */}
-                        <div className="bg-gradient-to-r from-pink-600 to-pink-500 rounded-2xl p-5 text-white">
+                        {/* Hero card */}
+                        <div className="bg-pink-600 rounded-2xl p-5 text-white">
                             <div className="flex items-start justify-between mb-4">
                                 <div>
-                                    <div className="text-lg font-bold">Hi, {customer.name.split(' ')[0]}!</div>
-                                    <div className="text-pink-200 text-xs mt-0.5">Welcome to your beauty space</div>
+                                    <p className="text-pink-200 text-xs uppercase tracking-widest mb-1">
+                                        Welcome back
+                                    </p>
+                                    <h2 className="text-xl font-semibold">{customer.name.split(' ')[0]}</h2>
                                 </div>
-                                <span className={`text-xs px-3 py-1 rounded-full font-semibold ${tier.bg} ${tier.text}`}>
+                                <span className={`text-xs px-3 py-1 rounded-full font-medium ${tier.bg} ${tier.text}`}>
                                     {tier.label}
                                 </span>
                             </div>
                             <div className="grid grid-cols-3 gap-3">
-                                <div className="bg-white/20 rounded-xl p-3 text-center">
-                                    <div className="text-xl font-bold">{customer.loyalty_points || 0}</div>
-                                    <div className="text-xs text-pink-100">Points</div>
+                                <div className="bg-white/15 rounded-xl p-3 text-center">
+                                    <div className="text-2xl font-semibold">{customer.loyalty_points || 0}</div>
+                                    <div className="text-xs text-pink-200 mt-0.5">Points</div>
                                 </div>
-                                <div className="bg-white/20 rounded-xl p-3 text-center">
-                                    <div className="text-xl font-bold">{customer.total_visits || 0}</div>
-                                    <div className="text-xs text-pink-100">Visits</div>
+                                <div className="bg-white/15 rounded-xl p-3 text-center">
+                                    <div className="text-2xl font-semibold">{customer.total_visits || 0}</div>
+                                    <div className="text-xs text-pink-200 mt-0.5">Visits</div>
                                 </div>
-                                <div className="bg-white/20 rounded-xl p-3 text-center">
-                                    <div className="text-xl font-bold">Rs.{pointsValue}</div>
-                                    <div className="text-xs text-pink-100">Points value</div>
+                                <div className="bg-white/15 rounded-xl p-3 text-center">
+                                    <div className="text-lg font-semibold">Rs.{pointsValue}</div>
+                                    <div className="text-xs text-pink-200 mt-0.5">Value</div>
                                 </div>
                             </div>
                         </div>
 
-                        {/* Book appointment CTA */}
-                        <button
-                            onClick={() => setShowBooking(true)}
-                            className="w-full bg-pink-600 text-white py-4 rounded-2xl text-sm font-bold hover:bg-pink-700 transition-colors">
+                        {/* Book CTA */}
+                        <button onClick={() => setShowBooking(true)}
+                            className="w-full bg-white border-2 border-pink-600 text-pink-700 py-4 rounded-2xl text-sm font-semibold hover:bg-pink-600 hover:text-white transition-colors">
                             + Book New Appointment
                         </button>
 
-                        {/* Upcoming appointments */}
+                        {/* Upcoming */}
                         {upcoming.length > 0 && (
-                            <div className="bg-white rounded-2xl border border-gray-100 p-4">
+                            <div className="bg-white rounded-2xl border border-pink-100 p-4">
                                 <h2 className="text-sm font-semibold text-gray-700 mb-3">Upcoming Appointments</h2>
                                 <div className="space-y-3">
-                                    {upcoming.slice(0, 3).map(a => (
+                                    {upcoming.slice(0, 2).map(a => (
                                         <div key={a.id} className="flex items-center gap-3 bg-blue-50 rounded-xl p-3">
                                             <div className="w-10 h-10 bg-blue-100 rounded-xl flex items-center justify-center flex-shrink-0">
-                                                <div className="text-xs font-bold text-blue-700">
+                                                <span className="text-xs font-bold text-blue-700">
                                                     {new Date(a.scheduled_at).getDate()}
-                                                </div>
+                                                </span>
                                             </div>
                                             <div className="flex-1 min-w-0">
-                                                <div className="text-sm font-medium text-gray-800 truncate">
-                                                    {a.services?.name}
-                                                </div>
+                                                <div className="text-sm font-medium text-gray-800 truncate">{a.services?.name}</div>
                                                 <div className="text-xs text-gray-500">
-                                                    {new Date(a.scheduled_at).toLocaleDateString('en-IN', {
-                                                        weekday: 'short', day: 'numeric', month: 'short'
-                                                    })}
+                                                    {new Date(a.scheduled_at).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })}
                                                     {' at '}
-                                                    {new Date(a.scheduled_at).toLocaleTimeString('en-IN', {
-                                                        hour: '2-digit', minute: '2-digit'
-                                                    })}
-                                                    {a.users?.name && ' with ' + a.users.name}
+                                                    {new Date(a.scheduled_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
                                                 </div>
                                             </div>
-                                            <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium flex-shrink-0">
-                                                {a.status}
-                                            </span>
+                                            <button onClick={() => cancelAppointment(a.id)}
+                                                className="text-xs text-red-400 hover:text-red-600 flex-shrink-0">
+                                                Cancel
+                                            </button>
                                         </div>
                                     ))}
                                 </div>
@@ -227,21 +189,19 @@ export default function PortalDashboard({ customer, onLogout, onCustomerUpdate }
 
                         {/* Personalized suggestions */}
                         {suggestions.length > 0 && (
-                            <div className="bg-white rounded-2xl border border-gray-100 p-4">
+                            <div className="bg-white rounded-2xl border border-pink-100 p-4">
                                 <h2 className="text-sm font-semibold text-gray-700 mb-1">Recommended for You</h2>
                                 <p className="text-xs text-gray-400 mb-3">Based on your visit history</p>
                                 <div className="space-y-2">
                                     {suggestions.map(s => (
-                                        <div key={s.id}
-                                            className="flex items-center justify-between bg-pink-50 rounded-xl px-3 py-2.5">
+                                        <div key={s.id} className="flex items-center justify-between bg-pink-50 rounded-xl px-3 py-2.5">
                                             <div>
                                                 <div className="text-sm font-medium text-gray-800">{s.name}</div>
-                                                <div className="text-xs text-gray-500">
+                                                <div className="text-xs text-gray-500 mt-0.5">
                                                     {s.duration_mins} min - Rs.{Number(s.price).toLocaleString('en-IN')}
                                                 </div>
                                             </div>
-                                            <button
-                                                onClick={() => setShowBooking(true)}
+                                            <button onClick={() => setShowBooking(true)}
                                                 className="text-xs bg-pink-600 text-white px-3 py-1.5 rounded-lg hover:bg-pink-700 flex-shrink-0 ml-2">
                                                 Book
                                             </button>
@@ -251,65 +211,99 @@ export default function PortalDashboard({ customer, onLogout, onCustomerUpdate }
                             </div>
                         )}
 
-                        {/* Active offers */}
+                        {/* Active offers preview */}
                         {offers.length > 0 && (
-                            <div className="bg-white rounded-2xl border border-gray-100 p-4">
-                                <h2 className="text-sm font-semibold text-gray-700 mb-3">
-                                    Active Offers ({offers.length})
-                                </h2>
-                                <div className="space-y-2">
-                                    {offers.slice(0, 3).map((o, i) => {
-                                        const colors = [
-                                            'bg-pink-50 border-pink-200 text-pink-700',
-                                            'bg-blue-50 border-blue-200 text-blue-700',
-                                            'bg-green-50 border-green-200 text-green-700',
-                                        ]
-                                        return (
-                                            <div key={o.id}
-                                                className={`border rounded-xl p-3 flex items-center justify-between ${colors[i % colors.length]}`}>
-                                                <div>
-                                                    <div className="text-sm font-semibold">{o.title}</div>
-                                                    {o.description && (
-                                                        <div className="text-xs opacity-70 mt-0.5">{o.description}</div>
-                                                    )}
-                                                    {o.promo_code && (
-                                                        <div className="text-xs font-mono font-bold mt-1 opacity-80">
-                                                            Code: {o.promo_code}
-                                                        </div>
-                                                    )}
-                                                </div>
-                                                <div className="text-2xl font-bold flex-shrink-0 ml-3">
-                                                    {o.discount_type === 'percentage'
-                                                        ? o.discount_value + '%'
-                                                        : 'Rs.' + Number(o.discount_value).toLocaleString('en-IN')}
-                                                </div>
-                                            </div>
-                                        )
-                                    })}
+                            <div className="bg-white rounded-2xl border border-pink-100 p-4">
+                                <div className="flex items-center justify-between mb-3">
+                                    <h2 className="text-sm font-semibold text-gray-700">Active Offers</h2>
+                                    <button onClick={() => setTab('offers')}
+                                        className="text-xs text-pink-500 hover:text-pink-700">
+                                        View all
+                                    </button>
                                 </div>
+                                {offers.slice(0, 2).map((o, i) => {
+                                    const colors = [
+                                        'bg-pink-50 border-pink-200',
+                                        'bg-blue-50 border-blue-200',
+                                    ]
+                                    const textColors = ['text-pink-700', 'text-blue-700']
+                                    return (
+                                        <div key={o.id} className={`border rounded-xl p-3 mb-2 flex items-center justify-between ${colors[i % 2]}`}>
+                                            <div>
+                                                <div className={`text-sm font-semibold ${textColors[i % 2]}`}>{o.title}</div>
+                                                {o.promo_code && (
+                                                    <div className="text-xs font-mono font-bold text-gray-500 mt-0.5">
+                                                        Code: {o.promo_code}
+                                                    </div>
+                                                )}
+                                            </div>
+                                            <div className={`text-2xl font-semibold ${textColors[i % 2]} flex-shrink-0 ml-3`}>
+                                                {o.discount_type === 'percentage' ? o.discount_value + '%' : 'Rs.' + Number(o.discount_value).toLocaleString('en-IN')}
+                                            </div>
+                                        </div>
+                                    )
+                                })}
                             </div>
                         )}
+
+                        {/* Blusha by Insha section */}
+                        <div className="bg-white rounded-2xl border border-pink-100 overflow-hidden">
+                            <div className="bg-pink-700 px-4 py-3">
+                                <p className="text-xs text-pink-200 uppercase tracking-widest">Also by Insha Feroz</p>
+                                <h3 className="text-white font-semibold text-base">Blusha by Insha</h3>
+                            </div>
+                            <div className="p-4">
+                                <p className="text-xs text-gray-500 mb-3 leading-relaxed">
+                                    Professional bridal and editorial makeup artistry by Insha Feroz. Specializing in pre-weddings, photoshoots, and special occasions across Jammu and Kashmir.
+                                </p>
+                                <div className="grid grid-cols-3 gap-2 mb-3 text-center">
+                                    <div className="bg-pink-50 rounded-xl p-2">
+                                        <div className="text-sm font-semibold text-pink-700">Bridal</div>
+                                        <div className="text-xs text-gray-400">Makeup</div>
+                                    </div>
+                                    <div className="bg-pink-50 rounded-xl p-2">
+                                        <div className="text-sm font-semibold text-pink-700">Pre-Wed</div>
+                                        <div className="text-xs text-gray-400">Shoots</div>
+                                    </div>
+                                    <div className="bg-pink-50 rounded-xl p-2">
+                                        <div className="text-sm font-semibold text-pink-700">Editorial</div>
+                                        <div className="text-xs text-gray-400">Looks</div>
+                                    </div>
+                                </div>
+                                <div className="flex gap-2">
+                                    <button
+                                        onClick={() => window.open('https://blissmakeover.framer.website', '_blank')}
+                                        className="flex-1 bg-pink-600 text-white py-2 rounded-xl text-xs font-medium hover:bg-pink-700">
+                                        Visit Website
+                                    </button>
+                                    <button
+                                        onClick={() => window.open('https://www.instagram.com/blusha_by_insha/', '_blank')}
+                                        className="flex-1 border border-pink-200 text-pink-600 py-2 rounded-xl text-xs font-medium hover:bg-pink-50">
+                                        Instagram
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
                     </div>
                 )}
 
-                {/* ?? APPOINTMENTS TAB ?? */}
+                {/* BOOKINGS TAB */}
                 {tab === 'appointments' && (
                     <div className="space-y-4">
                         <div className="flex items-center justify-between">
                             <h2 className="text-lg font-semibold text-gray-800">My Appointments</h2>
-                            <button
-                                onClick={() => setShowBooking(true)}
+                            <button onClick={() => setShowBooking(true)}
                                 className="bg-pink-600 text-white px-4 py-2 rounded-lg text-xs font-medium hover:bg-pink-700">
                                 + Book New
                             </button>
                         </div>
 
                         {appointments.length === 0 ? (
-                            <div className="text-center py-12">
-                                <p className="text-gray-400 text-sm">No appointments yet.</p>
-                                <button
-                                    onClick={() => setShowBooking(true)}
-                                    className="mt-3 bg-pink-600 text-white px-5 py-2 rounded-xl text-sm font-medium hover:bg-pink-700">
+                            <div className="text-center py-12 bg-white rounded-2xl border border-pink-100">
+                                <p className="text-gray-400 text-sm mb-3">No appointments yet.</p>
+                                <button onClick={() => setShowBooking(true)}
+                                    className="bg-pink-600 text-white px-5 py-2 rounded-xl text-sm font-medium hover:bg-pink-700">
                                     Book your first appointment
                                 </button>
                             </div>
@@ -317,6 +311,7 @@ export default function PortalDashboard({ customer, onLogout, onCustomerUpdate }
                             <div className="space-y-3">
                                 {appointments.map(a => {
                                     const isPast = new Date(a.scheduled_at) < new Date()
+                                    const canCancel = !isPast && a.status === 'confirmed'
                                     const statusColors = {
                                         confirmed: 'bg-blue-100 text-blue-700',
                                         in_progress: 'bg-amber-100 text-amber-700',
@@ -330,9 +325,7 @@ export default function PortalDashboard({ customer, onLogout, onCustomerUpdate }
                                                 }`}>
                                             <div className="flex items-start justify-between mb-2">
                                                 <div>
-                                                    <div className="font-semibold text-gray-800 text-sm">
-                                                        {a.services?.name}
-                                                    </div>
+                                                    <div className="font-semibold text-gray-800 text-sm">{a.services?.name}</div>
                                                     <div className="text-xs text-gray-400 mt-0.5">
                                                         {a.services?.category} - {a.services?.duration_mins} min
                                                     </div>
@@ -341,28 +334,25 @@ export default function PortalDashboard({ customer, onLogout, onCustomerUpdate }
                                                     {a.status.replace('_', ' ')}
                                                 </span>
                                             </div>
-                                            <div className="flex items-center justify-between text-xs text-gray-500">
-                                                <span>
-                                                    {new Date(a.scheduled_at).toLocaleDateString('en-IN', {
-                                                        weekday: 'short', day: 'numeric', month: 'short', year: 'numeric'
-                                                    })}
-                                                    {' at '}
-                                                    {new Date(a.scheduled_at).toLocaleTimeString('en-IN', {
-                                                        hour: '2-digit', minute: '2-digit'
-                                                    })}
+                                            <div className="text-xs text-gray-500 mb-2">
+                                                {new Date(a.scheduled_at).toLocaleDateString('en-IN', {
+                                                    weekday: 'short', day: 'numeric', month: 'short', year: 'numeric'
+                                                })}
+                                                {' at '}
+                                                {new Date(a.scheduled_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+                                                {a.users?.name && ' - with ' + a.users.name}
+                                            </div>
+                                            <div className="flex items-center justify-between pt-2 border-t border-gray-50">
+                                                <span className="text-xs font-semibold text-gray-800">
+                                                    Rs.{Number(a.amount || 0).toLocaleString('en-IN')}
                                                 </span>
-                                                {a.users?.name && (
-                                                    <span className="text-pink-500">with {a.users.name}</span>
+                                                {canCancel && (
+                                                    <button onClick={() => cancelAppointment(a.id)}
+                                                        className="text-xs text-red-400 hover:text-red-600 border border-red-200 px-3 py-1 rounded-lg hover:bg-red-50">
+                                                        Cancel appointment
+                                                    </button>
                                                 )}
                                             </div>
-                                            {a.amount && (
-                                                <div className="mt-2 pt-2 border-t border-gray-50 flex justify-between text-xs">
-                                                    <span className="text-gray-400">Amount</span>
-                                                    <span className="font-semibold text-gray-800">
-                                                        Rs.{Number(a.amount).toLocaleString('en-IN')}
-                                                    </span>
-                                                </div>
-                                            )}
                                         </div>
                                     )
                                 })}
@@ -371,89 +361,74 @@ export default function PortalDashboard({ customer, onLogout, onCustomerUpdate }
                     </div>
                 )}
 
-                {/* ?? LOYALTY TAB ?? */}
+                {/* LOYALTY TAB */}
                 {tab === 'loyalty' && (
                     <div className="space-y-4">
                         <h2 className="text-lg font-semibold text-gray-800">Loyalty Points</h2>
 
-                        {/* Points card */}
-                        <div className="bg-gradient-to-r from-pink-600 to-pink-500 rounded-2xl p-5 text-white text-center">
-                            <div className="text-4xl font-bold mb-1">{customer.loyalty_points || 0}</div>
+                        <div className="bg-pink-600 rounded-2xl p-5 text-white text-center">
+                            <div className="text-5xl font-semibold mb-1">{customer.loyalty_points || 0}</div>
                             <div className="text-pink-200 text-sm">Total Points</div>
-                            <div className="text-white font-semibold mt-2">
-                                Worth Rs.{pointsValue} in discounts
-                            </div>
+                            <div className="text-white font-medium mt-2">Worth Rs.{pointsValue} in discounts</div>
                             <div className="text-xs text-pink-200 mt-1">100 points = Rs.10 off</div>
                         </div>
 
-                        {/* Tier progress */}
-                        <div className="bg-white rounded-2xl border border-gray-100 p-4">
+                        <div className="bg-white rounded-2xl border border-pink-100 p-4">
                             <div className="flex items-center justify-between mb-3">
                                 <h3 className="text-sm font-semibold text-gray-700">Your Tier</h3>
-                                <span className={`text-xs px-3 py-1 rounded-full font-semibold ${tier.bg} ${tier.text}`}>
+                                <span className={`text-xs px-3 py-1 rounded-full font-medium ${tier.bg} ${tier.text}`}>
                                     {tier.label}
                                 </span>
                             </div>
                             {tier.next ? (
-                                <>
-                                    <p className="text-xs text-gray-500 mb-3">
-                                        Progress to {tier.next}
-                                    </p>
-                                    <div className="space-y-2">
-                                        <div>
-                                            <div className="flex justify-between text-xs text-gray-500 mb-1">
-                                                <span>Visits</span>
-                                                <span>{customer.total_visits} / {tier.needVisits}</span>
-                                            </div>
-                                            <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-                                                <div
-                                                    className="h-full bg-pink-400 rounded-full transition-all"
-                                                    style={{ width: Math.min(100, Math.round((customer.total_visits / tier.needVisits) * 100)) + '%' }}
-                                                />
-                                            </div>
+                                <div className="space-y-2">
+                                    <p className="text-xs text-gray-500 mb-2">Progress to {tier.next}</p>
+                                    <div>
+                                        <div className="flex justify-between text-xs text-gray-400 mb-1">
+                                            <span>Visits</span>
+                                            <span>{customer.total_visits} / {tier.needVisits}</span>
                                         </div>
-                                        <div>
-                                            <div className="flex justify-between text-xs text-gray-500 mb-1">
-                                                <span>Total spending</span>
-                                                <span>Rs.{Number(customer.total_spent || 0).toLocaleString('en-IN')} / Rs.{tier.needSpend.toLocaleString('en-IN')}</span>
-                                            </div>
-                                            <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-                                                <div
-                                                    className="h-full bg-pink-400 rounded-full transition-all"
-                                                    style={{ width: Math.min(100, Math.round((Number(customer.total_spent || 0) / tier.needSpend) * 100)) + '%' }}
-                                                />
-                                            </div>
+                                        <div className="h-2 bg-pink-100 rounded-full overflow-hidden">
+                                            <div className="h-full bg-pink-500 rounded-full"
+                                                style={{ width: Math.min(100, Math.round((customer.total_visits / tier.needVisits) * 100)) + '%' }} />
                                         </div>
                                     </div>
-                                    <p className="text-xs text-gray-400 mt-3 text-center">
-                                        {Math.max(0, tier.needVisits - customer.total_visits)} more visits and
-                                        Rs.{Math.max(0, tier.needSpend - Number(customer.total_spent || 0)).toLocaleString('en-IN')} more spending to reach {tier.next}
+                                    <div>
+                                        <div className="flex justify-between text-xs text-gray-400 mb-1">
+                                            <span>Spending</span>
+                                            <span>Rs.{Number(customer.total_spent || 0).toLocaleString('en-IN')} / Rs.{tier.needSpend.toLocaleString('en-IN')}</span>
+                                        </div>
+                                        <div className="h-2 bg-pink-100 rounded-full overflow-hidden">
+                                            <div className="h-full bg-pink-500 rounded-full"
+                                                style={{ width: Math.min(100, Math.round((Number(customer.total_spent || 0) / tier.needSpend) * 100)) + '%' }} />
+                                        </div>
+                                    </div>
+                                    <p className="text-xs text-gray-400 text-center mt-2">
+                                        {Math.max(0, tier.needVisits - customer.total_visits)} more visits and Rs.{Math.max(0, tier.needSpend - Number(customer.total_spent || 0)).toLocaleString('en-IN')} more spending to reach {tier.next}
                                     </p>
-                                </>
+                                </div>
                             ) : (
                                 <div className="text-center py-3">
-                                    <div className="text-2xl mb-2">*</div>
                                     <p className="text-sm font-semibold text-pink-700">Platinum Member!</p>
-                                    <p className="text-xs text-gray-400 mt-1">You have reached our highest tier. Enjoy 15% discount on all services!</p>
+                                    <p className="text-xs text-gray-400 mt-1">Highest tier - enjoy 15% discount on all services!</p>
                                 </div>
                             )}
                         </div>
 
-                        {/* Tier benefits */}
-                        <div className="bg-white rounded-2xl border border-gray-100 p-4">
+                        <div className="bg-white rounded-2xl border border-pink-100 p-4">
                             <h3 className="text-sm font-semibold text-gray-700 mb-3">Tier Benefits</h3>
-                            <div className="space-y-2 text-xs">
+                            <div className="space-y-2">
                                 {[
-                                    { tier: 'Basic', visits: '1+', discount: '0%', points: '1x' },
-                                    { tier: 'Silver', visits: '5+', discount: '5%', points: '1.5x' },
-                                    { tier: 'Gold', visits: '12+', discount: '10%', points: '2x' },
-                                    { tier: 'Platinum', visits: '25+', discount: '15%', points: '3x' },
+                                    { name: 'Basic', visits: '1+', discount: '0%', points: '1x' },
+                                    { name: 'Silver', visits: '5+', discount: '5%', points: '1.5x' },
+                                    { name: 'Gold', visits: '12+', discount: '10%', points: '2x' },
+                                    { name: 'Platinum', visits: '25+', discount: '15%', points: '3x' },
                                 ].map(t => (
-                                    <div key={t.tier}
-                                        className={`flex items-center justify-between p-2 rounded-lg ${tier.label === t.tier ? 'bg-pink-50 border border-pink-200' : 'bg-gray-50'
+                                    <div key={t.name}
+                                        className={`flex items-center justify-between text-xs p-2.5 rounded-xl ${tier.label === t.name ? 'bg-pink-50 border border-pink-200' : 'bg-gray-50'
                                             }`}>
-                                        <span className={`font-medium ${tier.label === t.tier ? 'text-pink-700' : 'text-gray-600'}`}>
-                                            {t.tier} {tier.label === t.tier ? '(You)' : ''}
+                                        <span className={`font-medium ${tier.label === t.name ? 'text-pink-700' : 'text-gray-600'}`}>
+                                            {t.name}{tier.label === t.name ? ' (You)' : ''}
                                         </span>
                                         <span className="text-gray-500">{t.visits} visits</span>
                                         <span className="text-gray-500">{t.discount} off</span>
@@ -463,26 +438,20 @@ export default function PortalDashboard({ customer, onLogout, onCustomerUpdate }
                             </div>
                         </div>
 
-                        {/* Points history */}
-                        <div className="bg-white rounded-2xl border border-gray-100 p-4">
+                        <div className="bg-white rounded-2xl border border-pink-100 p-4">
                             <h3 className="text-sm font-semibold text-gray-700 mb-3">Points History</h3>
                             {loyaltyEvents.length === 0 ? (
                                 <p className="text-xs text-gray-400 text-center py-3">No points activity yet.</p>
                             ) : (
                                 <div className="space-y-2">
                                     {loyaltyEvents.map(e => (
-                                        <div key={e.id} className="flex items-center justify-between text-xs">
+                                        <div key={e.id} className="flex items-center justify-between text-xs py-1 border-b border-gray-50">
                                             <div>
                                                 <div className="text-gray-700">{e.description || e.event_type}</div>
-                                                <div className="text-gray-400">
-                                                    {new Date(e.created_at).toLocaleDateString('en-IN')}
-                                                </div>
+                                                <div className="text-gray-400">{new Date(e.created_at).toLocaleDateString('en-IN')}</div>
                                             </div>
-                                            <div className="text-right">
-                                                <div className={`font-semibold ${e.points > 0 ? 'text-green-600' : 'text-red-500'}`}>
-                                                    {e.points > 0 ? '+' : ''}{e.points} pts
-                                                </div>
-                                                <div className="text-gray-400">bal: {e.balance_after}</div>
+                                            <div className={`font-semibold ${e.points > 0 ? 'text-green-600' : 'text-red-500'}`}>
+                                                {e.points > 0 ? '+' : ''}{e.points} pts
                                             </div>
                                         </div>
                                     ))}
@@ -492,13 +461,12 @@ export default function PortalDashboard({ customer, onLogout, onCustomerUpdate }
                     </div>
                 )}
 
-                {/* ?? OFFERS TAB ?? */}
+                {/* OFFERS TAB */}
                 {tab === 'offers' && (
                     <div className="space-y-4">
                         <h2 className="text-lg font-semibold text-gray-800">Offers for You</h2>
-
                         {offers.length === 0 ? (
-                            <div className="text-center py-12">
+                            <div className="text-center py-12 bg-white rounded-2xl border border-pink-100">
                                 <p className="text-gray-400 text-sm">No active offers right now.</p>
                                 <p className="text-gray-300 text-xs mt-1">Check back soon!</p>
                             </div>
@@ -506,52 +474,35 @@ export default function PortalDashboard({ customer, onLogout, onCustomerUpdate }
                             <div className="space-y-3">
                                 {offers.map((o, i) => {
                                     const palettes = [
-                                        { bg: 'bg-pink-50', border: 'border-pink-200', title: 'text-pink-800', val: 'text-pink-600' },
-                                        { bg: 'bg-blue-50', border: 'border-blue-200', title: 'text-blue-800', val: 'text-blue-600' },
-                                        { bg: 'bg-green-50', border: 'border-green-200', title: 'text-green-800', val: 'text-green-600' },
-                                        { bg: 'bg-amber-50', border: 'border-amber-200', title: 'text-amber-800', val: 'text-amber-600' },
+                                        { wrap: 'bg-pink-50 border-pink-200', title: 'text-pink-800', val: 'text-pink-600' },
+                                        { wrap: 'bg-blue-50 border-blue-200', title: 'text-blue-800', val: 'text-blue-600' },
+                                        { wrap: 'bg-green-50 border-green-200', title: 'text-green-800', val: 'text-green-600' },
+                                        { wrap: 'bg-amber-50 border-amber-200', title: 'text-amber-800', val: 'text-amber-600' },
                                     ]
                                     const p = palettes[i % palettes.length]
                                     return (
-                                        <div key={o.id} className={`${p.bg} border ${p.border} rounded-2xl p-4`}>
+                                        <div key={o.id} className={`border rounded-2xl p-4 ${p.wrap}`}>
                                             <div className="flex items-start justify-between mb-2">
                                                 <div className="flex-1 min-w-0">
                                                     <div className={`font-bold text-sm ${p.title}`}>{o.title}</div>
-                                                    {o.description && (
-                                                        <div className={`text-xs mt-0.5 ${p.val} opacity-80`}>
-                                                            {o.description}
-                                                        </div>
-                                                    )}
+                                                    {o.description && <div className={`text-xs mt-0.5 ${p.val} opacity-80`}>{o.description}</div>}
                                                 </div>
-                                                <div className={`text-3xl font-bold ${p.title} flex-shrink-0 ml-3`}>
-                                                    {o.discount_type === 'percentage'
-                                                        ? o.discount_value + '%'
-                                                        : 'Rs.' + Number(o.discount_value).toLocaleString('en-IN')}
+                                                <div className={`text-3xl font-semibold ${p.title} flex-shrink-0 ml-3`}>
+                                                    {o.discount_type === 'percentage' ? o.discount_value + '%' : 'Rs.' + Number(o.discount_value).toLocaleString('en-IN')}
                                                 </div>
                                             </div>
-                                            <div className="flex flex-wrap gap-2 text-xs">
+                                            <div className="flex flex-wrap gap-2 text-xs mb-3">
                                                 {o.promo_code && (
                                                     <span className={`font-mono font-bold px-2 py-0.5 bg-white/70 rounded ${p.title}`}>
                                                         Code: {o.promo_code}
                                                     </span>
                                                 )}
-                                                {Number(o.min_bill) > 0 && (
-                                                    <span className={p.val}>
-                                                        Min bill Rs.{Number(o.min_bill).toLocaleString('en-IN')}
-                                                    </span>
-                                                )}
-                                                {o.applies_to !== 'all' && (
-                                                    <span className={p.val}>{o.applies_to} only</span>
-                                                )}
-                                                <span className={p.val}>
-                                                    Valid till {new Date(o.end_date).toLocaleDateString('en-IN', {
-                                                        day: 'numeric', month: 'short'
-                                                    })}
-                                                </span>
+                                                {Number(o.min_bill) > 0 && <span className={p.val}>Min Rs.{Number(o.min_bill).toLocaleString('en-IN')}</span>}
+                                                {o.applies_to !== 'all' && <span className={p.val}>{o.applies_to} only</span>}
+                                                <span className={p.val}>Valid till {new Date(o.end_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}</span>
                                             </div>
-                                            <button
-                                                onClick={() => setShowBooking(true)}
-                                                className="mt-3 w-full bg-white/80 border border-current py-2 rounded-xl text-xs font-semibold hover:bg-white transition-colors">
+                                            <button onClick={() => setShowBooking(true)}
+                                                className="w-full bg-white/80 border border-current py-2 rounded-xl text-xs font-semibold hover:bg-white transition-colors">
                                                 Book Now to Avail
                                             </button>
                                         </div>
@@ -562,114 +513,216 @@ export default function PortalDashboard({ customer, onLogout, onCustomerUpdate }
                     </div>
                 )}
 
-                {/* ?? PROFILE TAB ?? */}
+                {/* PROFILE TAB */}
                 {tab === 'profile' && (
-          <div className="space-y-4">
-            <h2 className="text-lg font-semibold text-gray-800">My Profile</h2>
-
-            <div className="bg-white rounded-2xl border border-gray-100 p-5">
-              <div className="flex items-center gap-4 mb-5">
-                <div className="w-16 h-16 rounded-full bg-pink-100 flex items-center justify-center text-pink-700 font-bold text-2xl flex-shrink-0">
-                  {customer.name.charAt(0).toUpperCase()}
-                </div>
-                <div>
-                  <div className="font-bold text-gray-800 text-lg">{customer.name}</div>
-                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${tier.bg} ${tier.text}`}>
-                    {tier.label} Member
-                  </span>
-                </div>
-              </div>
-
-              <div className="space-y-3 text-sm">
-                <div className="flex justify-between py-2 border-b border-gray-50">
-                  <span className="text-gray-400">Phone</span>
-                  <span className="text-gray-800 font-medium">{customer.phone}</span>
-                </div>
-                {customer.email && (
-                  <div className="flex justify-between py-2 border-b border-gray-50">
-                    <span className="text-gray-400">Email</span>
-                    <span className="text-gray-800">{customer.email}</span>
-                  </div>
+                    <ProfileTab
+                        customer={customer}
+                        onLogout={onLogout}
+                        onCustomerUpdate={onCustomerUpdate}
+                    />
                 )}
-                {customer.date_of_birth && (
-                  <div className="flex justify-between py-2 border-b border-gray-50">
-                    <span className="text-gray-400">Birthday</span>
-                    <span className="text-gray-800">{customer.date_of_birth}</span>
-                  </div>
-                )}
-                <div className="flex justify-between py-2 border-b border-gray-50">
-                  <span className="text-gray-400">Member since</span>
-                  <span className="text-gray-800">
-                    {customer.portal_joined
-                      ? new Date(customer.portal_joined).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })
-                      : 'Salon member'}
-                  </span>
-                </div>
-                <div className="flex justify-between py-2 border-b border-gray-50">
-                  <span className="text-gray-400">Total visits</span>
-                  <span className="text-gray-800 font-medium">{customer.total_visits || 0}</span>
-                </div>
-                <div className="flex justify-between py-2">
-                  <span className="text-gray-400">Total spent</span>
-                  <span className="text-gray-800 font-medium">
-                    Rs.{Number(customer.total_spent || 0).toLocaleString('en-IN')}
-                  </span>
-                </div>
-              </div>
             </div>
 
-            <div className="bg-white rounded-2xl border border-gray-100 p-4">
-              <h3 className="text-sm font-semibold text-gray-700 mb-3">Need help?</h3>
-              
-                            <button
-                                onClick={() => window.open('https://wa.me/917006604551', '_blank')}
-                                className="w-full flex items-center justify-between bg-green-50 border border-green-200 rounded-xl p-3 hover:bg-green-100 transition-colors">
-                                <div>
-                                    <div className="text-sm font-medium text-green-700">Contact Bliss Makeover</div>
-                                    <div className="text-xs text-green-600">WhatsApp us for any queries</div>
-                                </div>
-                                <div className="text-green-600 font-bold text-lg">WA</div>
-                            </button>
+            {/* Bottom navigation */}
+            <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-pink-100 z-30">
+                <div className="max-w-lg mx-auto flex items-center justify-around px-4 py-2">
+                    {[
+                        { key: 'home', label: 'Home' },
+                        { key: 'appointments', label: 'Bookings' },
+                        { key: 'loyalty', label: 'Points' },
+                        { key: 'offers', label: 'Offers' },
+                        { key: 'profile', label: 'Profile' },
+                    ].map(t => (
+                        <button key={t.key} onClick={() => setTab(t.key)}
+                            className={`flex flex-col items-center py-1 px-3 rounded-xl transition-colors ${tab === t.key ? 'text-pink-600' : 'text-gray-400'
+                                }`}>
+                            <div className={`w-1.5 h-1.5 rounded-full mb-1 ${tab === t.key ? 'bg-pink-600' : 'bg-transparent'}`} />
+                            <span className="text-xs font-medium">{t.label}</span>
+                        </button>
+                    ))}
+                </div>
+            </nav>
+
+            {showBooking && (
+                <PortalBooking
+                    customer={customer}
+                    onClose={() => setShowBooking(false)}
+                    onBooked={() => { setShowBooking(false); fetchData(); refreshCustomer() }}
+                />
+            )}
+        </div>
+    )
+}
+
+function ProfileTab({ customer, onLogout, onCustomerUpdate }) {
+    const tier = TIERS[customer.loyalty_tier] || TIERS.basic
+    const [showChangePw, setShowChangePw] = useState(false)
+    const [oldPassword, setOldPassword] = useState('')
+    const [newPassword, setNewPassword] = useState('')
+    const [confirmPw, setConfirmPw] = useState('')
+    const [pwError, setPwError] = useState('')
+    const [pwSuccess, setPwSuccess] = useState(false)
+    const [savingPw, setSavingPw] = useState(false)
+
+    async function changePassword() {
+        if (!oldPassword) return setPwError('Enter your current password')
+        if (!newPassword) return setPwError('Enter a new password')
+        if (newPassword.length < 6) return setPwError('Password must be at least 6 characters')
+        if (newPassword !== confirmPw) return setPwError('Passwords do not match')
+        setSavingPw(true)
+        setPwError('')
+
+        const oldHashed = hashPassword(oldPassword)
+        const { data } = await supabase
+            .from('customers')
+            .select('id')
+            .eq('id', customer.id)
+            .eq('portal_password', oldHashed)
+            .single()
+
+        if (!data) {
+            setPwError('Current password is incorrect')
+            setSavingPw(false)
+            return
+        }
+
+        const newHashed = hashPassword(newPassword)
+        await supabase.from('customers')
+            .update({ portal_password: newHashed })
+            .eq('id', customer.id)
+
+        setSavingPw(false)
+        setPwSuccess(true)
+        setOldPassword('')
+        setNewPassword('')
+        setConfirmPw('')
+        setTimeout(() => { setPwSuccess(false); setShowChangePw(false) }, 2000)
+    }
+
+    return (
+        <div className="space-y-4">
+            <h2 className="text-lg font-semibold text-gray-800">My Profile</h2>
+
+            {/* Profile card */}
+            <div className="bg-white rounded-2xl border border-pink-100 p-5">
+                <div className="flex items-center gap-4 mb-5">
+                    <div className="w-16 h-16 rounded-full bg-pink-100 flex items-center justify-center text-pink-700 font-bold text-2xl flex-shrink-0">
+                        {customer.name.charAt(0).toUpperCase()}
+                    </div>
+                    <div>
+                        <div className="font-bold text-gray-800 text-lg">{customer.name}</div>
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${tier.bg} ${tier.text}`}>
+                            {tier.label} Member
+                        </span>
+                    </div>
+                </div>
+                <div className="space-y-3 text-sm">
+                    <div className="flex justify-between py-2 border-b border-gray-50">
+                        <span className="text-gray-400">Phone</span>
+                        <span className="text-gray-800 font-medium">{customer.phone}</span>
+                    </div>
+                    {customer.email && (
+                        <div className="flex justify-between py-2 border-b border-gray-50">
+                            <span className="text-gray-400">Email</span>
+                            <span className="text-gray-700 text-xs truncate ml-4">{customer.email}</span>
+                        </div>
+                    )}
+                    {customer.date_of_birth && (
+                        <div className="flex justify-between py-2 border-b border-gray-50">
+                            <span className="text-gray-400">Birthday</span>
+                            <span className="text-gray-700">{customer.date_of_birth}</span>
+                        </div>
+                    )}
+                    <div className="flex justify-between py-2 border-b border-gray-50">
+                        <span className="text-gray-400">Total visits</span>
+                        <span className="text-gray-800 font-medium">{customer.total_visits || 0}</span>
+                    </div>
+                    <div className="flex justify-between py-2">
+                        <span className="text-gray-400">Total spent</span>
+                        <span className="text-gray-800 font-medium">
+                            Rs.{Number(customer.total_spent || 0).toLocaleString('en-IN')}
+                        </span>
+                    </div>
+                </div>
+            </div>
+
+            {/* Change password */}
+            <div className="bg-white rounded-2xl border border-pink-100 p-4">
+                <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-sm font-semibold text-gray-700">Password</h3>
+                    <button onClick={() => { setShowChangePw(v => !v); setPwError(''); setPwSuccess(false) }}
+                        className="text-xs text-pink-500 hover:text-pink-700 border border-pink-200 px-3 py-1 rounded-lg hover:bg-pink-50">
+                        {showChangePw ? 'Cancel' : 'Change password'}
+                    </button>
+                </div>
+
+                {showChangePw && (
+                    <div className="space-y-3">
+                        {pwError && (
+                            <div className="bg-red-50 border border-red-200 rounded-xl p-2">
+                                <p className="text-xs text-red-600">{pwError}</p>
+                            </div>
+                        )}
+                        {pwSuccess && (
+                            <div className="bg-green-50 border border-green-200 rounded-xl p-2">
+                                <p className="text-xs text-green-600">Password changed successfully!</p>
+                            </div>
+                        )}
+                        <div>
+                            <label className="text-xs text-gray-500 mb-1 block">Current password</label>
+                            <input type="password" value={oldPassword} onChange={e => setOldPassword(e.target.value)}
+                                placeholder="Your current password"
+                                className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-pink-300 bg-gray-50" />
+                        </div>
+                        <div>
+                            <label className="text-xs text-gray-500 mb-1 block">New password</label>
+                            <input type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)}
+                                placeholder="Min 6 characters"
+                                className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-pink-300 bg-gray-50" />
+                        </div>
+                        <div>
+                            <label className="text-xs text-gray-500 mb-1 block">Confirm new password</label>
+                            <input type="password" value={confirmPw} onChange={e => setConfirmPw(e.target.value)}
+                                placeholder="Repeat new password"
+                                className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-pink-300 bg-gray-50" />
+                        </div>
+                        <button onClick={changePassword} disabled={savingPw}
+                            className="w-full bg-pink-600 text-white py-2.5 rounded-xl text-sm font-medium hover:bg-pink-700 disabled:opacity-40">
+                            {savingPw ? 'Updating...' : 'Update Password'}
+                        </button>
+                    </div>
+                )}
+            </div>
+
+            {/* Contact + help */}
+            <div className="bg-white rounded-2xl border border-pink-100 p-4">
+                <h3 className="text-sm font-semibold text-gray-700 mb-3">Need help?</h3>
+                <div className="space-y-2">
+                    <button
+                        onClick={() => window.open('https://wa.me/917006604551', '_blank')}
+                        className="w-full flex items-center justify-between bg-green-50 border border-green-200 rounded-xl p-3 hover:bg-green-100 transition-colors">
+                        <div>
+                            <div className="text-sm font-medium text-green-700">WhatsApp Bliss Makeover</div>
+                            <div className="text-xs text-green-600">7006604551 - Mon to Sat, 9am to 8pm</div>
+                        </div>
+                        <span className="text-green-600 font-bold text-sm">WA</span>
+                    </button>
+                    <button
+                        onClick={() => window.open('https://blissmakeover.framer.website', '_blank')}
+                        className="w-full flex items-center justify-between bg-pink-50 border border-pink-200 rounded-xl p-3 hover:bg-pink-100 transition-colors">
+                        <div>
+                            <div className="text-sm font-medium text-pink-700">Blusha by Insha</div>
+                            <div className="text-xs text-pink-500">Bridal and editorial makeup artistry</div>
+                        </div>
+                        <span className="text-pink-600 font-bold text-sm">Visit</span>
+                    </button>
+                </div>
             </div>
 
             <button onClick={onLogout}
-              className="w-full border border-red-200 text-red-400 py-3 rounded-2xl text-sm font-medium hover:bg-red-50 transition-colors">
-              Sign Out
+                className="w-full border border-red-200 text-red-400 py-3 rounded-2xl text-sm font-medium hover:bg-red-50 transition-colors">
+                Sign Out
             </button>
-          </div>
-        )}
         </div>
-
-      {/* Bottom navigation */ }
-    <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 z-30">
-        <div className="max-w-lg mx-auto flex items-center justify-around px-4 py-2">
-            {[
-                { key: 'home', label: 'Home' },
-                { key: 'appointments', label: 'Bookings' },
-                { key: 'loyalty', label: 'Points' },
-                { key: 'offers', label: 'Offers' },
-                { key: 'profile', label: 'Profile' },
-            ].map(t => (
-                <button key={t.key} onClick={() => setTab(t.key)}
-                    className={`flex flex-col items-center py-1 px-3 rounded-xl transition-colors ${tab === t.key ? 'text-pink-600' : 'text-gray-400'
-                        }`}>
-                    <div className={`w-1.5 h-1.5 rounded-full mb-1 ${tab === t.key ? 'bg-pink-600' : 'bg-transparent'}`} />
-                    <span className="text-xs font-medium">{t.label}</span>
-                </button>
-            ))}
-        </div>
-    </nav>
-
-    {/* Booking modal */ }
-    {
-        showBooking && (
-            <PortalBooking
-                customer={customer}
-                onClose={() => setShowBooking(false)}
-                onBooked={() => { setShowBooking(false); fetchData(); refreshCustomer() }}
-            />
-        )
-    }
-    </div >
-  )
+    )
 }

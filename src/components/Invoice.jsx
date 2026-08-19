@@ -32,7 +32,7 @@ export default function Invoice({ transaction, appointment, onClose }) {
 
     const customerName = transaction.customers?.name || appointment?.customers?.name || 'Customer'
     const customerPhone = transaction.customers?.phone || appointment?.customers?.phone || ''
-    const serviceName = appointment?.services?.name || 'Service'
+    const serviceName = appointment?.services_summary || appointment?.services?.name || 'Service'
     const serviceCategory = appointment?.services?.category || ''
     const staffName = appointment?.users?.name || '-'
 
@@ -120,21 +120,35 @@ export default function Invoice({ transaction, appointment, onClose }) {
         doc.text('Amount', pageW - 22, y + 5.5, { align: 'right' })
         y += 10
 
-        // Service row
-        doc.setFont('helvetica', 'normal')
-        doc.setFontSize(11)
-        doc.setTextColor(...dark)
-        doc.text(serviceName, 22, y)
-        doc.setFontSize(9)
-        doc.setTextColor(...gray)
-        if (serviceCategory) doc.text(serviceCategory, 22, y + 4)
-        doc.setFontSize(11)
-        doc.setTextColor(...dark)
-        doc.text(staffName, 110, y)
-        doc.text('Rs.' + subtotal.toLocaleString('en-IN'), pageW - 22, y, { align: 'right' })
-
-        y += 14
-
+        // Service rows - handle multi-service
+        const apptServices = appointment?.apptServices
+        if (apptServices && apptServices.length > 0) {
+            apptServices.forEach((s, i) => {
+                doc.setFont('helvetica', 'normal')
+                doc.setFontSize(11)
+                doc.setTextColor(...dark)
+                doc.text(String(s.service_name), 22, y)
+                doc.setFontSize(11)
+                doc.setTextColor(...dark)
+                if (i === 0) doc.text(staffName, 110, y)
+                doc.text('Rs.' + Number(s.price).toLocaleString('en-IN'), pageW - 22, y, { align: 'right' })
+                y += 8
+            })
+        } else {
+            doc.setFont('helvetica', 'normal')
+            doc.setFontSize(11)
+            doc.setTextColor(...dark)
+            doc.text(serviceName, 22, y)
+            doc.setFontSize(9)
+            doc.setTextColor(...gray)
+            if (serviceCategory) doc.text(serviceCategory, 22, y + 4)
+            doc.setFontSize(11)
+            doc.setTextColor(...dark)
+            doc.text(staffName, 110, y)
+            doc.text('Rs.' + subtotal.toLocaleString('en-IN'), pageW - 22, y, { align: 'right' })
+            y += 14
+        }
+        y += 4
         // Light gray divider
         doc.setDrawColor(...ltgray)
         doc.setLineWidth(0.3)
@@ -340,8 +354,10 @@ export default function Invoice({ transaction, appointment, onClose }) {
                         </div>
 
                         {/* Service table */}
-                        <div style={{ marginBottom: '14px' }}>
-                            <div style={{ fontSize: '9px', fontWeight: 'bold', color: '#888', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '6px' }}>Service Details</div>
+                        <div style={{ marginBottom: '20px' }}>
+                            <div style={{ fontSize: '9px', fontWeight: 'bold', color: '#888', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '6px' }}>
+                                Service Details
+                            </div>
                             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                                 <thead>
                                     <tr style={{ backgroundColor: '#fdf2f8', borderBottom: '1px solid #f9a8d4' }}>
@@ -351,20 +367,36 @@ export default function Invoice({ transaction, appointment, onClose }) {
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    <tr>
-                                        <td style={{ padding: '9px 8px', fontSize: '12px', color: '#333' }}>
-                                            {serviceName}
-                                            {serviceCategory && <div style={{ fontSize: '10px', color: '#888', marginTop: '2px' }}>{serviceCategory}</div>}
-                                        </td>
-                                        <td style={{ padding: '9px 8px', fontSize: '11px', color: '#666' }}>{staffName}</td>
-                                        <td style={{ padding: '9px 8px', fontSize: '12px', color: '#333', textAlign: 'right', fontWeight: '500' }}>
-                                            Rs.{subtotal.toLocaleString('en-IN')}
-                                        </td>
-                                    </tr>
+                                    {appointment?.apptServices && appointment.apptServices.length > 0 ? (
+                                        appointment.apptServices.map((s, i) => (
+                                            <tr key={i} style={{ borderBottom: '1px solid #f9f9f9' }}>
+                                                <td style={{ padding: '8px 8px', fontSize: '12px', color: '#333' }}>{s.service_name}</td>
+                                                <td style={{ padding: '8px 8px', fontSize: '11px', color: '#666' }}>
+                                                    {i === 0 ? staffName : ''}
+                                                </td>
+                                                <td style={{ padding: '8px 8px', fontSize: '12px', color: '#333', textAlign: 'right', fontWeight: '500' }}>
+                                                    Rs.{Number(s.price).toLocaleString('en-IN')}
+                                                </td>
+                                            </tr>
+                                        ))
+                                    ) : (
+                                        <tr>
+                                            <td style={{ padding: '9px 8px', fontSize: '12px', color: '#333' }}>
+                                                {serviceName}
+                                                {serviceCategory && (
+                                                    <div style={{ fontSize: '10px', color: '#888', marginTop: '2px' }}>{serviceCategory}</div>
+                                                )}
+                                            </td>
+                                            <td style={{ padding: '9px 8px', fontSize: '11px', color: '#666' }}>{staffName}</td>
+                                            <td style={{ padding: '9px 8px', fontSize: '12px', color: '#333', textAlign: 'right', fontWeight: '500' }}>
+                                                Rs.{subtotal.toLocaleString('en-IN')}
+                                            </td>
+                                        </tr>
+                                    )}
                                 </tbody>
                             </table>
                         </div>
-
+                         
                         {/* Summary box */}
                         <div style={{ backgroundColor: '#f9fafb', borderRadius: '8px', padding: '14px', marginBottom: '14px' }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>

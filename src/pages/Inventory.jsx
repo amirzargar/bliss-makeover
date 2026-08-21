@@ -4,7 +4,8 @@ import { supabase } from '../lib/supabase'
 const CATEGORIES = ['Hair', 'Skin', 'Nails', 'Body', 'Makeup', 'General']
 const empty = {
     name: '', category: 'Hair', stock_qty: '',
-    min_level: '', unit: 'units', unit_price: '', supplier: ''
+    min_level: '', unit: 'units', unit_price: '',
+    cost_price: '', supplier: ''
 }
 
 export default function Inventory() {
@@ -37,13 +38,16 @@ export default function Inventory() {
         if (form.stock_qty === '') return alert('Enter stock quantity')
         if (form.min_level === '') return alert('Enter minimum level')
         setSaving(true)
+
         const payload = {
             ...form,
             stock_qty: Number(form.stock_qty),
             min_level: Number(form.min_level),
             unit_price: form.unit_price !== '' ? Number(form.unit_price) : null,
+            cost_price: form.cost_price !== '' ? Number(form.cost_price) : null,
             last_updated: new Date().toISOString()
         }
+
         if (editing) {
             await supabase.from('inventory').update(payload).eq('id', editing)
         } else {
@@ -82,6 +86,7 @@ export default function Inventory() {
             min_level: item.min_level,
             unit: item.unit,
             unit_price: item.unit_price ?? '',
+            cost_price: item.cost_price ?? '',
             supplier: item.supplier || ''
         })
         setEditing(item.id)
@@ -96,6 +101,13 @@ export default function Inventory() {
         return matchSearch
     })
 
+    function getMargin(item) {
+        const sell = Number(item.unit_price || 0)
+        const cost = Number(item.cost_price || 0)
+        if (sell <= 0 || cost <= 0) return null
+        return Math.round(((sell - cost) / sell) * 100)
+    }
+
     function statusPill(item) {
         const qty = Number(item.stock_qty)
         const min = Number(item.min_level)
@@ -107,24 +119,19 @@ export default function Inventory() {
     function AdjustControls({ item }) {
         return adjustId === item.id ? (
             <div className="flex items-center gap-1">
-                <button
-                    onClick={() => adjustStock(item.id, -Number(adjustQty || 1))}
+                <button onClick={() => adjustStock(item.id, -Number(adjustQty || 1))}
                     className="w-7 h-7 rounded bg-red-100 text-red-600 text-sm font-bold hover:bg-red-200">
                     -
                 </button>
-                <input
-                    type="number"
-                    value={adjustQty}
+                <input type="number" value={adjustQty}
                     onChange={e => setAdjustQty(e.target.value)}
                     className="w-12 border border-gray-200 rounded px-1 py-0.5 text-xs text-center focus:outline-none"
                     placeholder="1" />
-                <button
-                    onClick={() => adjustStock(item.id, Number(adjustQty || 1))}
+                <button onClick={() => adjustStock(item.id, Number(adjustQty || 1))}
                     className="w-7 h-7 rounded bg-green-100 text-green-600 text-sm font-bold hover:bg-green-200">
                     +
                 </button>
-                <button
-                    onClick={() => setAdjustId(null)}
+                <button onClick={() => setAdjustId(null)}
                     className="text-xs text-gray-400 hover:text-gray-600 ml-1 px-1">
                     x
                 </button>
@@ -165,8 +172,7 @@ export default function Inventory() {
                         </span>
                         {' '}{lowStock.map(i => i.name).join(', ')}
                     </p>
-                    <button
-                        onClick={() => setFilter('low')}
+                    <button onClick={() => setFilter('low')}
                         className="ml-auto text-xs text-amber-700 font-medium underline">
                         View all
                     </button>
@@ -175,25 +181,20 @@ export default function Inventory() {
 
             {/* Filters */}
             <div className="flex gap-2 mb-4 flex-wrap">
-                <input
-                    value={search}
-                    onChange={e => setSearch(e.target.value)}
+                <input value={search} onChange={e => setSearch(e.target.value)}
                     placeholder="Search products..."
                     className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm min-w-[140px] focus:outline-none focus:border-pink-300" />
                 <button onClick={() => setFilter('all')}
-                    className={`px-3 py-1.5 rounded-full text-xs font-medium ${filter === 'all' ? 'bg-pink-600 text-white' : 'bg-gray-100 text-gray-500'
-                        }`}>
+                    className={`px-3 py-1.5 rounded-full text-xs font-medium ${filter === 'all' ? 'bg-pink-600 text-white' : 'bg-gray-100 text-gray-500'}`}>
                     All
                 </button>
                 <button onClick={() => setFilter('low')}
-                    className={`px-3 py-1.5 rounded-full text-xs font-medium ${filter === 'low' ? 'bg-amber-500 text-white' : 'bg-gray-100 text-gray-500'
-                        }`}>
+                    className={`px-3 py-1.5 rounded-full text-xs font-medium ${filter === 'low' ? 'bg-amber-500 text-white' : 'bg-gray-100 text-gray-500'}`}>
                     Low stock
                 </button>
                 {CATEGORIES.map(c => (
                     <button key={c} onClick={() => setFilter(c)}
-                        className={`px-3 py-1.5 rounded-full text-xs font-medium ${filter === c ? 'bg-pink-600 text-white' : 'bg-gray-100 text-gray-500'
-                            }`}>
+                        className={`px-3 py-1.5 rounded-full text-xs font-medium ${filter === c ? 'bg-pink-600 text-white' : 'bg-gray-100 text-gray-500'}`}>
                         {c}
                     </button>
                 ))}
@@ -214,100 +215,128 @@ export default function Inventory() {
                                     <th className="text-left px-4 py-3 text-xs font-medium text-gray-400">Category</th>
                                     <th className="text-left px-4 py-3 text-xs font-medium text-gray-400">Stock</th>
                                     <th className="text-left px-4 py-3 text-xs font-medium text-gray-400">Min Level</th>
+                                    <th className="text-left px-4 py-3 text-xs font-medium text-gray-400">Sell Price</th>
+                                    <th className="text-left px-4 py-3 text-xs font-medium text-gray-400">Cost Price</th>
+                                    <th className="text-left px-4 py-3 text-xs font-medium text-gray-400">Margin</th>
                                     <th className="text-left px-4 py-3 text-xs font-medium text-gray-400">Status</th>
-                                    <th className="text-left px-4 py-3 text-xs font-medium text-gray-400">Supplier</th>
                                     <th className="text-left px-4 py-3 text-xs font-medium text-gray-400">Actions</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                {filtered.map(item => (
-                                    <tr key={item.id} className="border-b border-gray-50 hover:bg-gray-50">
-                                        <td className="px-4 py-3">
-                                            <div className="font-medium text-gray-800">{item.name}</div>
-                                            {item.unit_price > 0 && (
-                                                <div className="text-xs text-gray-400">
-                                                    Rs.{Number(item.unit_price).toLocaleString('en-IN')} / {item.unit}
+                                {filtered.map(item => {
+                                    const margin = getMargin(item)
+                                    return (
+                                        <tr key={item.id} className="border-b border-gray-50 hover:bg-gray-50">
+                                            <td className="px-4 py-3">
+                                                <div className="font-medium text-gray-800">{item.name}</div>
+                                                {item.supplier && (
+                                                    <div className="text-xs text-gray-400 mt-0.5">{item.supplier}</div>
+                                                )}
+                                            </td>
+                                            <td className="px-4 py-3">
+                                                <span className="bg-pink-50 text-pink-700 px-2 py-0.5 rounded-full text-xs font-medium">
+                                                    {item.category}
+                                                </span>
+                                            </td>
+                                            <td className="px-4 py-3">
+                                                <AdjustControls item={item} />
+                                            </td>
+                                            <td className="px-4 py-3 text-gray-500">
+                                                {item.min_level} {item.unit}
+                                            </td>
+                                            <td className="px-4 py-3 text-gray-700">
+                                                {Number(item.unit_price) > 0
+                                                    ? 'Rs.' + Number(item.unit_price).toLocaleString('en-IN')
+                                                    : '-'}
+                                            </td>
+                                            <td className="px-4 py-3 text-gray-500">
+                                                {Number(item.cost_price) > 0
+                                                    ? 'Rs.' + Number(item.cost_price).toLocaleString('en-IN')
+                                                    : '-'}
+                                            </td>
+                                            <td className="px-4 py-3">
+                                                {margin !== null ? (
+                                                    <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${margin >= 30
+                                                            ? 'bg-green-100 text-green-700'
+                                                            : margin >= 10
+                                                                ? 'bg-amber-100 text-amber-700'
+                                                                : 'bg-red-100 text-red-600'
+                                                        }`}>
+                                                        {margin}%
+                                                    </span>
+                                                ) : (
+                                                    <span className="text-xs text-gray-300">-</span>
+                                                )}
+                                            </td>
+                                            <td className="px-4 py-3">{statusPill(item)}</td>
+                                            <td className="px-4 py-3">
+                                                <div className="flex gap-2">
+                                                    <button onClick={() => startEdit(item)}
+                                                        className="text-xs text-blue-500 hover:text-blue-700">Edit</button>
+                                                    <button onClick={() => deleteItem(item.id)}
+                                                        className="text-xs text-red-400 hover:text-red-600">Delete</button>
                                                 </div>
-                                            )}
-                                        </td>
-                                        <td className="px-4 py-3">
-                                            <span className="bg-pink-50 text-pink-700 px-2 py-0.5 rounded-full text-xs font-medium">
-                                                {item.category}
-                                            </span>
-                                        </td>
-                                        <td className="px-4 py-3">
-                                            <AdjustControls item={item} />
-                                        </td>
-                                        <td className="px-4 py-3 text-gray-500">
-                                            {item.min_level} {item.unit}
-                                        </td>
-                                        <td className="px-4 py-3">{statusPill(item)}</td>
-                                        <td className="px-4 py-3 text-gray-500 text-xs">
-                                            {item.supplier || '-'}
-                                        </td>
-                                        <td className="px-4 py-3">
-                                            <div className="flex gap-2">
-                                                <button
-                                                    onClick={() => startEdit(item)}
-                                                    className="text-xs text-blue-500 hover:text-blue-700">
-                                                    Edit
-                                                </button>
-                                                <button
-                                                    onClick={() => deleteItem(item.id)}
-                                                    className="text-xs text-red-400 hover:text-red-600">
-                                                    Delete
-                                                </button>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                ))}
+                                            </td>
+                                        </tr>
+                                    )
+                                })}
                             </tbody>
                         </table>
                     </div>
 
                     {/* Mobile cards */}
                     <div className="md:hidden space-y-3">
-                        {filtered.map(item => (
-                            <div key={item.id} className="bg-white rounded-xl border border-gray-100 p-4">
-                                <div className="flex items-start justify-between mb-3">
-                                    <div>
-                                        <div className="font-medium text-gray-800">{item.name}</div>
-                                        {item.unit_price > 0 && (
-                                            <div className="text-xs text-gray-400 mt-0.5">
-                                                Rs.{Number(item.unit_price).toLocaleString('en-IN')} / {item.unit}
+                        {filtered.map(item => {
+                            const margin = getMargin(item)
+                            return (
+                                <div key={item.id} className="bg-white rounded-xl border border-gray-100 p-4">
+                                    <div className="flex items-start justify-between mb-3">
+                                        <div>
+                                            <div className="font-medium text-gray-800">{item.name}</div>
+                                            <div className="flex gap-3 mt-1">
+                                                {Number(item.unit_price) > 0 && (
+                                                    <span className="text-xs text-gray-500">
+                                                        Sell: Rs.{Number(item.unit_price).toLocaleString('en-IN')}
+                                                    </span>
+                                                )}
+                                                {Number(item.cost_price) > 0 && (
+                                                    <span className="text-xs text-gray-400">
+                                                        Cost: Rs.{Number(item.cost_price).toLocaleString('en-IN')}
+                                                    </span>
+                                                )}
+                                                {margin !== null && (
+                                                    <span className={`text-xs font-semibold ${margin >= 30 ? 'text-green-600' : margin >= 10 ? 'text-amber-600' : 'text-red-500'
+                                                        }`}>
+                                                        {margin}% margin
+                                                    </span>
+                                                )}
                                             </div>
+                                        </div>
+                                        {statusPill(item)}
+                                    </div>
+                                    <div className="mb-3">
+                                        <span className="bg-pink-50 text-pink-700 px-2 py-0.5 rounded-full text-xs font-medium">
+                                            {item.category}
+                                        </span>
+                                        {item.supplier && (
+                                            <span className="text-xs text-gray-400 ml-2">{item.supplier}</span>
                                         )}
                                     </div>
-                                    {statusPill(item)}
-                                </div>
-                                <div className="mb-3">
-                                    <span className="bg-pink-50 text-pink-700 px-2 py-0.5 rounded-full text-xs font-medium">
-                                        {item.category}
-                                    </span>
-                                    {item.supplier && (
-                                        <span className="text-xs text-gray-400 ml-2">{item.supplier}</span>
-                                    )}
-                                </div>
-                                <div className="flex items-center justify-between pt-2 border-t border-gray-50">
-                                    <div className="text-xs text-gray-500">
-                                        Min: {item.min_level} {item.unit}
-                                    </div>
-                                    <div className="flex items-center gap-3">
-                                        <AdjustControls item={item} />
-                                        <button
-                                            onClick={() => startEdit(item)}
-                                            className="text-xs text-blue-500 hover:text-blue-700 font-medium">
-                                            Edit
-                                        </button>
-                                        <button
-                                            onClick={() => deleteItem(item.id)}
-                                            className="text-xs text-red-400 hover:text-red-600 font-medium">
-                                            Delete
-                                        </button>
+                                    <div className="flex items-center justify-between pt-2 border-t border-gray-50">
+                                        <div className="text-xs text-gray-500">
+                                            Min: {item.min_level} {item.unit}
+                                        </div>
+                                        <div className="flex items-center gap-3">
+                                            <AdjustControls item={item} />
+                                            <button onClick={() => startEdit(item)}
+                                                className="text-xs text-blue-500 hover:text-blue-700 font-medium">Edit</button>
+                                            <button onClick={() => deleteItem(item.id)}
+                                                className="text-xs text-red-400 hover:text-red-600 font-medium">Delete</button>
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
-                        ))}
+                            )
+                        })}
                     </div>
                 </>
             )}
@@ -322,8 +351,7 @@ export default function Inventory() {
                         <div className="space-y-3">
                             <div>
                                 <label className="text-xs text-gray-500 mb-1 block">Product name *</label>
-                                <input
-                                    value={form.name}
+                                <input value={form.name}
                                     onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
                                     placeholder="e.g. Loreal Hair Colour"
                                     className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-pink-300" />
@@ -331,8 +359,7 @@ export default function Inventory() {
                             <div className="grid grid-cols-2 gap-3">
                                 <div>
                                     <label className="text-xs text-gray-500 mb-1 block">Category</label>
-                                    <select
-                                        value={form.category}
+                                    <select value={form.category}
                                         onChange={e => setForm(f => ({ ...f, category: e.target.value }))}
                                         className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-pink-300">
                                         {CATEGORIES.map(c => <option key={c}>{c}</option>)}
@@ -340,8 +367,7 @@ export default function Inventory() {
                                 </div>
                                 <div>
                                     <label className="text-xs text-gray-500 mb-1 block">Unit</label>
-                                    <select
-                                        value={form.unit}
+                                    <select value={form.unit}
                                         onChange={e => setForm(f => ({ ...f, unit: e.target.value }))}
                                         className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-pink-300">
                                         {['units', 'ml', 'grams', 'litres', 'packets', 'boxes'].map(u => (
@@ -353,18 +379,14 @@ export default function Inventory() {
                             <div className="grid grid-cols-2 gap-3">
                                 <div>
                                     <label className="text-xs text-gray-500 mb-1 block">Current stock *</label>
-                                    <input
-                                        type="number"
-                                        value={form.stock_qty}
+                                    <input type="number" value={form.stock_qty}
                                         onChange={e => setForm(f => ({ ...f, stock_qty: e.target.value }))}
                                         placeholder="e.g. 10"
                                         className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-pink-300" />
                                 </div>
                                 <div>
                                     <label className="text-xs text-gray-500 mb-1 block">Min level *</label>
-                                    <input
-                                        type="number"
-                                        value={form.min_level}
+                                    <input type="number" value={form.min_level}
                                         onChange={e => setForm(f => ({ ...f, min_level: e.target.value }))}
                                         placeholder="e.g. 3"
                                         className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-pink-300" />
@@ -372,33 +394,65 @@ export default function Inventory() {
                             </div>
                             <div className="grid grid-cols-2 gap-3">
                                 <div>
-                                    <label className="text-xs text-gray-500 mb-1 block">Unit price (Rs.)</label>
-                                    <input
-                                        type="number"
-                                        value={form.unit_price}
+                                    <label className="text-xs text-gray-500 mb-1 block">
+                                        Selling price (Rs.)
+                                    </label>
+                                    <input type="number" value={form.unit_price}
                                         onChange={e => setForm(f => ({ ...f, unit_price: e.target.value }))}
-                                        placeholder="optional"
+                                        placeholder="What you charge customer"
                                         className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-pink-300" />
                                 </div>
                                 <div>
-                                    <label className="text-xs text-gray-500 mb-1 block">Supplier</label>
-                                    <input
-                                        value={form.supplier}
-                                        onChange={e => setForm(f => ({ ...f, supplier: e.target.value }))}
-                                        placeholder="optional"
+                                    <label className="text-xs text-gray-500 mb-1 block">
+                                        Cost price (Rs.)
+                                    </label>
+                                    <input type="number" value={form.cost_price}
+                                        onChange={e => setForm(f => ({ ...f, cost_price: e.target.value }))}
+                                        placeholder="What you paid supplier"
                                         className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-pink-300" />
                                 </div>
                             </div>
+
+                            {/* Live margin preview */}
+                            {Number(form.unit_price) > 0 && Number(form.cost_price) > 0 && (
+                                <div className={`rounded-xl p-3 text-sm flex items-center justify-between ${getMargin({ unit_price: form.unit_price, cost_price: form.cost_price }) >= 30
+                                        ? 'bg-green-50 border border-green-200'
+                                        : getMargin({ unit_price: form.unit_price, cost_price: form.cost_price }) >= 10
+                                            ? 'bg-amber-50 border border-amber-200'
+                                            : 'bg-red-50 border border-red-200'
+                                    }`}>
+                                    <span className="text-gray-600 text-xs">Profit per unit</span>
+                                    <div className="text-right">
+                                        <span className="font-semibold text-gray-800">
+                                            Rs.{(Number(form.unit_price) - Number(form.cost_price)).toLocaleString('en-IN')}
+                                        </span>
+                                        <span className={`ml-2 text-xs font-bold ${getMargin({ unit_price: form.unit_price, cost_price: form.cost_price }) >= 30
+                                                ? 'text-green-600'
+                                                : getMargin({ unit_price: form.unit_price, cost_price: form.cost_price }) >= 10
+                                                    ? 'text-amber-600'
+                                                    : 'text-red-500'
+                                            }`}>
+                                            ({getMargin({ unit_price: form.unit_price, cost_price: form.cost_price })}% margin)
+                                        </span>
+                                    </div>
+                                </div>
+                            )}
+
+                            <div>
+                                <label className="text-xs text-gray-500 mb-1 block">Supplier</label>
+                                <input value={form.supplier}
+                                    onChange={e => setForm(f => ({ ...f, supplier: e.target.value }))}
+                                    placeholder="optional"
+                                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-pink-300" />
+                            </div>
                         </div>
+
                         <div className="flex gap-2 mt-5">
-                            <button
-                                onClick={() => { setShowForm(false); setEditing(null) }}
+                            <button onClick={() => { setShowForm(false); setEditing(null) }}
                                 className="flex-1 border border-gray-200 text-gray-500 py-2 rounded-lg text-sm hover:bg-gray-50">
                                 Cancel
                             </button>
-                            <button
-                                onClick={save}
-                                disabled={saving}
+                            <button onClick={save} disabled={saving}
                                 className="flex-1 bg-pink-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-pink-700 disabled:opacity-40">
                                 {saving ? 'Saving...' : editing ? 'Update Product' : 'Add Product'}
                             </button>

@@ -14,6 +14,7 @@ export default function ProductSales() {
     const [showInvoice, setShowInvoice] = useState(false)
     const [invoiceSale, setInvoiceSale] = useState(null)
     const [invoiceItems, setInvoiceItems] = useState([])
+    const [summary, setSummary] = useState({ revenue: 0, cost: 0, profit: 0, count: 0 })
 
     const [form, setForm] = useState({
         customer_id: '',
@@ -31,7 +32,7 @@ export default function ProductSales() {
         setLoading(true)
         const [prods, custs, stf, sl] = await Promise.all([
             supabase.from('inventory')
-                .select('id, name, category, stock_qty, unit, unit_price')
+                .select('id, name, category, stock_qty, unit, unit_price, cost_price')
                 .gt('stock_qty', 0)
                 .order('name'),
             supabase.from('customers').select('id, name, phone').order('name'),
@@ -45,6 +46,16 @@ export default function ProductSales() {
         setCustomers(custs.data || [])
         setStaff(stf.data || [])
         setSales(sl.data || [])
+
+        // Calculate summary from recent sales
+        const salesData = sl.data || []
+        setSummary({
+            revenue: salesData.reduce((s, sale) => s + Number(sale.total || 0), 0),
+            cost: salesData.reduce((s, sale) => s + Number(sale.total_cost || 0), 0),
+            profit: salesData.reduce((s, sale) => s + Number(sale.total_profit || 0), 0),
+            count: salesData.length,
+        })
+
         setLoading(false)
     }
 
@@ -62,6 +73,7 @@ export default function ProductSales() {
                 id: product.id,
                 name: product.name,
                 unit_price: Number(product.unit_price || 0),
+                cost_price: Number(product.cost_price || 0),
                 qty: 1,
                 max_qty: Number(product.stock_qty),
                 unit: product.unit,
@@ -86,8 +98,10 @@ export default function ProductSales() {
     }
 
     const subtotal = cart.reduce((s, c) => s + c.unit_price * c.qty, 0)
+    const totalCost = cart.reduce((s, c) => s + c.cost_price * c.qty, 0)
     const discount = Number(form.discount || 0)
     const total = Math.max(0, subtotal - discount)
+    const totalProfit = total - totalCost
 
     async function completeSale() {
         if (cart.length === 0) return alert('Add at least one product to the cart')
@@ -102,6 +116,8 @@ export default function ProductSales() {
                 subtotal,
                 discount,
                 total,
+                total_cost: totalCost,
+                total_profit: totalProfit,
             }).select().single()
 
         if (saleErr) {
@@ -110,16 +126,20 @@ export default function ProductSales() {
             return
         }
 
+        // Insert items with cost and profit
         const items = cart.map(c => ({
             product_sale_id: sale.id,
             inventory_id: c.id,
             product_name: c.name,
             quantity: c.qty,
             unit_price: c.unit_price,
+            cost_price: c.cost_price,
             total_price: c.unit_price * c.qty,
+            profit: (c.unit_price - c.cost_price) * c.qty,
         }))
         await supabase.from('product_sale_items').insert(items)
 
+        // Deduct stock
         for (const c of cart) {
             const product = products.find(p => p.id === c.id)
             if (product) {
@@ -130,10 +150,11 @@ export default function ProductSales() {
             }
         }
 
+        // Update customer spending
         if (form.customer_id) {
             const { data: cust } = await supabase
                 .from('customers')
-                .select('total_spent, loyalty_points, total_visits')
+                .select('total_spent, loyalty_points')
                 .eq('id', form.customer_id)
                 .single()
 
@@ -141,7 +162,6 @@ export default function ProductSales() {
                 const pointsEarned = Math.floor(total / 20)
                 const newPoints = (cust.loyalty_points || 0) + pointsEarned
                 const newSpent = (Number(cust.total_spent) || 0) + total
-
                 await supabase.from('customers').update({
                     total_spent: newSpent,
                     loyalty_points: newPoints,
@@ -180,12 +200,10 @@ export default function ProductSales() {
         p.name.toLowerCase().includes(search.toLowerCase()) ||
         p.category.toLowerCase().includes(search.toLowerCase())
     )
-
     const filteredCustomers = customers.filter(c =>
         c.name.toLowerCase().includes(custSearch.toLowerCase()) ||
         c.phone.includes(custSearch)
     )
-
     const selectedCustomer = customers.find(c => c.id === form.customer_id)
 
     return (
@@ -205,6 +223,40 @@ export default function ProductSales() {
                 </button>
             </div>
 
+            {/* Profit summary cards */}
+            {!loading && sales.length > 0 && (
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+                    <div className="bg-white rounded-xl border border-gray-100 p-4">
+                        <div className="text-xs text-gray-400 mb-1">Revenue</div>
+                        <div className="text-lg font-semibold text-gray-800">
+                            Rs.{Math.round(summary.revenue).toLocaleString('en-IN')}
+                        </div>
+                        <div className="text-xs text-gray-400 mt-0.5">{summary.count} sales</div>
+                    </div>
+                    <div className="bg-white rounded-xl border border-gray-100 p-4">
+                        <div className="text-xs text-gray-400 mb-1">Cost</div>
+                        <div className="text-lg font-semibold text-gray-800">
+                            Rs.{Math.round(summary.cost).toLocaleString('en-IN')}
+                        </div>
+                        <div className="text-xs text-gray-400 mt-0.5">Products cost</div>
+                    </div>
+                    <div className="bg-white rounded-xl border border-gray-100 p-4">
+                        <div className="text-xs text-gray-400 mb-1">Profit</div>
+                        <div className={`text-lg font-semibold ${summary.profit >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+                            Rs.{Math.round(summary.profit).toLocaleString('en-IN')}
+                        </div>
+                        <div className="text-xs text-gray-400 mt-0.5">Net earnings</div>
+                    </div>
+                    <div className="bg-white rounded-xl border border-gray-100 p-4">
+                        <div className="text-xs text-gray-400 mb-1">Margin</div>
+                        <div className={`text-lg font-semibold ${summary.profit >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+                            {summary.revenue > 0 ? Math.round((summary.profit / summary.revenue) * 100) : 0}%
+                        </div>
+                        <div className="text-xs text-gray-400 mt-0.5">Profit margin</div>
+                    </div>
+                </div>
+            )}
+
             {/* Recent sales */}
             {loading ? (
                 <div className="text-center text-gray-400 py-12">Loading...</div>
@@ -219,31 +271,45 @@ export default function ProductSales() {
                         <h2 className="text-sm font-semibold text-gray-700">Recent Sales</h2>
                     </div>
                     <div className="divide-y divide-gray-50">
-                        {sales.map(s => (
-                            <div key={s.id} className="px-4 py-3 flex items-center gap-4">
-                                <div className="flex-1 min-w-0">
-                                    <div className="font-medium text-gray-800 text-sm">
-                                        {s.customers?.name || 'Walk-in Customer'}
+                        {sales.map(s => {
+                            const profit = Number(s.total_profit || 0)
+                            const margin = Number(s.total || 0) > 0
+                                ? Math.round((profit / Number(s.total)) * 100)
+                                : 0
+                            return (
+                                <div key={s.id} className="px-4 py-3 flex items-center gap-4">
+                                    <div className="flex-1 min-w-0">
+                                        <div className="font-medium text-gray-800 text-sm">
+                                            {s.customers?.name || 'Walk-in Customer'}
+                                        </div>
+                                        <div className="text-xs text-gray-400 mt-0.5">
+                                            {new Date(s.created_at).toLocaleDateString('en-IN', {
+                                                day: 'numeric', month: 'short', year: 'numeric'
+                                            })}
+                                            {' at '}
+                                            {new Date(s.created_at).toLocaleTimeString('en-IN', {
+                                                hour: '2-digit', minute: '2-digit'
+                                            })}
+                                            {s.users?.name && ' - ' + s.users.name}
+                                        </div>
                                     </div>
-                                    <div className="text-xs text-gray-400 mt-0.5">
-                                        {new Date(s.created_at).toLocaleDateString('en-IN', {
-                                            day: 'numeric', month: 'short', year: 'numeric'
-                                        })}
-                                        {' at '}
-                                        {new Date(s.created_at).toLocaleTimeString('en-IN', {
-                                            hour: '2-digit', minute: '2-digit'
-                                        })}
-                                        {s.users?.name && ' - ' + s.users.name}
+                                    <div className="text-right flex-shrink-0">
+                                        <div className="font-semibold text-gray-800 text-sm">
+                                            Rs.{Number(s.total).toLocaleString('en-IN')}
+                                        </div>
+                                        <div className="text-xs text-gray-400 capitalize">{s.payment_mode}</div>
                                     </div>
+                                    {Number(s.total_profit) > 0 && (
+                                        <div className="text-right flex-shrink-0 hidden md:block">
+                                            <div className={`text-sm font-semibold ${profit >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+                                                Rs.{Math.round(profit).toLocaleString('en-IN')}
+                                            </div>
+                                            <div className="text-xs text-gray-400">{margin}% margin</div>
+                                        </div>
+                                    )}
                                 </div>
-                                <div className="text-right flex-shrink-0">
-                                    <div className="font-semibold text-gray-800 text-sm">
-                                        Rs.{Number(s.total).toLocaleString('en-IN')}
-                                    </div>
-                                    <div className="text-xs text-gray-400 capitalize">{s.payment_mode}</div>
-                                </div>
-                            </div>
-                        ))}
+                            )
+                        })}
                     </div>
                 </div>
             )}
@@ -252,7 +318,6 @@ export default function ProductSales() {
             {showForm && (
                 <div className="fixed inset-0 bg-black/40 flex items-start justify-center z-50 p-4 overflow-y-auto">
                     <div className="bg-white rounded-2xl w-full max-w-2xl my-4">
-
                         <div className="flex items-center justify-between p-5 border-b border-gray-100">
                             <h2 className="text-base font-semibold text-gray-800">New Product Sale</h2>
                             <button
@@ -278,13 +343,22 @@ export default function ProductSales() {
                                         <p className="text-xs text-gray-400 text-center py-4">No products in stock.</p>
                                     ) : filteredProducts.map(p => {
                                         const inCart = cart.find(c => c.id === p.id)
+                                        const margin = Number(p.unit_price) > 0 && Number(p.cost_price) > 0
+                                            ? Math.round(((Number(p.unit_price) - Number(p.cost_price)) / Number(p.unit_price)) * 100)
+                                            : null
                                         return (
                                             <div key={p.id}
                                                 className="flex items-center justify-between bg-gray-50 rounded-xl px-3 py-2.5">
                                                 <div className="flex-1 min-w-0">
                                                     <div className="text-sm font-medium text-gray-800 truncate">{p.name}</div>
                                                     <div className="text-xs text-gray-400 mt-0.5">
-                                                        Rs.{Number(p.unit_price || 0).toLocaleString('en-IN')} - {p.stock_qty} {p.unit} left
+                                                        Rs.{Number(p.unit_price || 0).toLocaleString('en-IN')}
+                                                        {Number(p.cost_price) > 0 && (
+                                                            <span className="text-green-600 ml-1">
+                                                                ({margin}% margin)
+                                                            </span>
+                                                        )}
+                                                        {' - '}{p.stock_qty} {p.unit} left
                                                     </div>
                                                 </div>
                                                 <button onClick={() => addToCart(p)}
@@ -300,11 +374,9 @@ export default function ProductSales() {
                                 </div>
                             </div>
 
-                            {/* Right - Cart + details */}
+                            {/* Right - Cart */}
                             <div>
-                                <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
-                                    Cart
-                                </h3>
+                                <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Cart</h3>
 
                                 {cart.length === 0 ? (
                                     <div className="bg-gray-50 rounded-xl p-6 text-center mb-4">
@@ -316,9 +388,7 @@ export default function ProductSales() {
                                         {cart.map(c => (
                                             <div key={c.id} className="bg-gray-50 rounded-xl px-3 py-2.5">
                                                 <div className="flex items-center justify-between mb-1.5">
-                                                    <span className="text-sm font-medium text-gray-800 truncate flex-1">
-                                                        {c.name}
-                                                    </span>
+                                                    <span className="text-sm font-medium text-gray-800 truncate flex-1">{c.name}</span>
                                                     <button onClick={() => removeFromCart(c.id)}
                                                         className="text-red-400 hover:text-red-600 text-xs ml-2 flex-shrink-0">
                                                         Remove
@@ -337,16 +407,23 @@ export default function ProductSales() {
                                                             onChange={e => updatePrice(c.id, e.target.value)}
                                                             className="w-20 border border-gray-200 rounded px-2 py-0.5 text-xs text-center focus:outline-none" />
                                                     </div>
-                                                    <span className="text-xs font-semibold text-gray-800 ml-auto">
-                                                        Rs.{(c.unit_price * c.qty).toLocaleString('en-IN')}
-                                                    </span>
+                                                    <div className="ml-auto text-right">
+                                                        <span className="text-xs font-semibold text-gray-800">
+                                                            Rs.{(c.unit_price * c.qty).toLocaleString('en-IN')}
+                                                        </span>
+                                                        {c.cost_price > 0 && (
+                                                            <div className="text-xs text-green-600">
+                                                                +Rs.{((c.unit_price - c.cost_price) * c.qty).toLocaleString('en-IN')} profit
+                                                            </div>
+                                                        )}
+                                                    </div>
                                                 </div>
                                             </div>
                                         ))}
                                     </div>
                                 )}
 
-                                {/* Bill summary */}
+                                {/* Bill summary with profit */}
                                 {cart.length > 0 && (
                                     <div className="bg-gray-50 rounded-xl p-3 mb-4 text-sm space-y-2">
                                         <div className="flex justify-between">
@@ -363,6 +440,22 @@ export default function ProductSales() {
                                             <span>Total</span>
                                             <span className="text-pink-700">Rs.{total.toLocaleString('en-IN')}</span>
                                         </div>
+                                        {totalCost > 0 && (
+                                            <>
+                                                <div className="flex justify-between text-xs text-gray-400">
+                                                    <span>Total cost</span>
+                                                    <span>Rs.{Math.round(totalCost).toLocaleString('en-IN')}</span>
+                                                </div>
+                                                <div className="flex justify-between text-xs font-semibold border-t border-gray-100 pt-1">
+                                                    <span className="text-gray-600">Profit on this sale</span>
+                                                    <span className={totalProfit >= 0 ? 'text-green-600' : 'text-red-500'}>
+                                                        Rs.{Math.round(totalProfit).toLocaleString('en-IN')}
+                                                        {' '}
+                                                        ({total > 0 ? Math.round((totalProfit / total) * 100) : 0}%)
+                                                    </span>
+                                                </div>
+                                            </>
+                                        )}
                                     </div>
                                 )}
 
@@ -378,10 +471,7 @@ export default function ProductSales() {
                                         <div className="border border-gray-200 rounded-lg overflow-hidden max-h-32 overflow-y-auto">
                                             {filteredCustomers.slice(0, 5).map(c => (
                                                 <button key={c.id}
-                                                    onClick={() => {
-                                                        setForm(f => ({ ...f, customer_id: c.id }))
-                                                        setCustSearch(c.name)
-                                                    }}
+                                                    onClick={() => { setForm(f => ({ ...f, customer_id: c.id })); setCustSearch(c.name) }}
                                                     className="w-full text-left px-3 py-2 text-sm hover:bg-pink-50 border-b border-gray-50">
                                                     {c.name} - {c.phone}
                                                 </button>
@@ -390,14 +480,9 @@ export default function ProductSales() {
                                     )}
                                     {selectedCustomer && (
                                         <div className="flex items-center justify-between mt-1">
-                                            <p className="text-xs text-green-600 font-medium">
-                                                Selected: {selectedCustomer.name}
-                                            </p>
-                                            <button
-                                                onClick={() => { setForm(f => ({ ...f, customer_id: '' })); setCustSearch('') }}
-                                                className="text-xs text-gray-400 hover:text-gray-600">
-                                                clear
-                                            </button>
+                                            <p className="text-xs text-green-600 font-medium">Selected: {selectedCustomer.name}</p>
+                                            <button onClick={() => { setForm(f => ({ ...f, customer_id: '' })); setCustSearch('') }}
+                                                className="text-xs text-gray-400 hover:text-gray-600">clear</button>
                                         </div>
                                     )}
                                 </div>
@@ -409,19 +494,16 @@ export default function ProductSales() {
                                         onChange={e => setForm(f => ({ ...f, staff_id: e.target.value }))}
                                         className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-pink-300">
                                         <option value="">Select staff...</option>
-                                        {staff.map(s => (
-                                            <option key={s.id} value={s.id}>{s.name}</option>
-                                        ))}
+                                        {staff.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                                     </select>
                                 </div>
 
-                                {/* Payment method */}
+                                {/* Payment */}
                                 <div className="mb-3">
                                     <label className="text-xs text-gray-500 mb-2 block">Payment method</label>
                                     <div className="grid grid-cols-4 gap-2">
                                         {['cash', 'upi', 'card', 'wallet'].map(m => (
-                                            <button key={m}
-                                                onClick={() => setForm(f => ({ ...f, payment_mode: m }))}
+                                            <button key={m} onClick={() => setForm(f => ({ ...f, payment_mode: m }))}
                                                 className={`py-2 rounded-lg text-xs font-medium capitalize transition-colors ${form.payment_mode === m
                                                         ? 'bg-pink-600 text-white'
                                                         : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
@@ -445,18 +527,13 @@ export default function ProductSales() {
 
                         {/* Footer */}
                         <div className="flex gap-3 p-5 border-t border-gray-100">
-                            <button
-                                onClick={() => { setShowForm(false); setCart([]) }}
+                            <button onClick={() => { setShowForm(false); setCart([]) }}
                                 className="flex-1 border border-gray-200 text-gray-500 py-2.5 rounded-lg text-sm hover:bg-gray-50">
                                 Cancel
                             </button>
-                            <button
-                                onClick={completeSale}
-                                disabled={saving || cart.length === 0}
+                            <button onClick={completeSale} disabled={saving || cart.length === 0}
                                 className="flex-1 bg-pink-600 text-white py-2.5 rounded-lg text-sm font-medium hover:bg-pink-700 disabled:opacity-40">
-                                {saving
-                                    ? 'Processing...'
-                                    : 'Complete Sale - Rs.' + total.toLocaleString('en-IN')}
+                                {saving ? 'Processing...' : 'Complete Sale - Rs.' + total.toLocaleString('en-IN')}
                             </button>
                         </div>
                     </div>
@@ -477,11 +554,11 @@ export default function ProductSales() {
 
 function ProductSaleInvoice({ sale, items, onClose }) {
     const salonInfo = {
-        name: 'Bliss Makeover By BBI',
+        name: 'Bliss Makeover',
         tagline: 'Hair | Makeup | Skin',
-        address: 'Nagbal,90 feet Road ',
-        phone: '+91 7006914136 ',
-        email: 'zargaraaamir@gmail.com',
+        address: 'Nagbal Chowk, Bhat Complex, Behind Petrol Pump, Jammu',
+        phone: '+91 7006604551',
+        email: 'blissmakeover@gmail.com',
     }
 
     const invoiceNumber = 'BMS-' +
@@ -511,14 +588,12 @@ function ProductSaleInvoice({ sale, items, onClose }) {
         doc.setFontSize(20)
         doc.setTextColor(...pink)
         doc.text(salonInfo.name, 20, y)
-
         doc.setFont('helvetica', 'normal')
         doc.setFontSize(10)
         doc.setTextColor(...gray)
         doc.text(salonInfo.tagline, 20, y + 6)
         doc.text(salonInfo.address, 20, y + 12)
         doc.text('Phone: ' + salonInfo.phone, 20, y + 17)
-
         doc.setFont('helvetica', 'bold')
         doc.setFontSize(16)
         doc.setTextColor(...dark)
@@ -557,14 +632,15 @@ function ProductSaleInvoice({ sale, items, onClose }) {
             y += 3
         }
 
+        // Items table
         doc.setFillColor(253, 242, 248)
         doc.rect(20, y, pageW - 40, 8, 'F')
         doc.setFont('helvetica', 'bold')
         doc.setFontSize(10)
         doc.setTextColor(...pink)
         doc.text('Product', 22, y + 5.5)
-        doc.text('Qty', 120, y + 5.5)
-        doc.text('Price', 145, y + 5.5)
+        doc.text('Qty', 110, y + 5.5)
+        doc.text('Price', 135, y + 5.5)
         doc.text('Total', pageW - 22, y + 5.5, { align: 'right' })
         y += 10
 
@@ -573,8 +649,8 @@ function ProductSaleInvoice({ sale, items, onClose }) {
             doc.setFontSize(11)
             doc.setTextColor(...dark)
             doc.text(String(item.product_name), 22, y)
-            doc.text(String(item.quantity), 120, y)
-            doc.text('Rs.' + Number(item.unit_price).toLocaleString('en-IN'), 145, y)
+            doc.text(String(item.quantity), 110, y)
+            doc.text('Rs.' + Number(item.unit_price).toLocaleString('en-IN'), 135, y)
             doc.text('Rs.' + Number(item.total_price).toLocaleString('en-IN'), pageW - 22, y, { align: 'right' })
             y += 8
         })
@@ -585,9 +661,9 @@ function ProductSaleInvoice({ sale, items, onClose }) {
         doc.line(20, y, pageW - 20, y)
         y += 6
 
-        const boxHeight = sale.discount > 0 ? 30 : 22
+        const boxH = sale.discount > 0 ? 30 : 22
         doc.setFillColor(249, 250, 251)
-        doc.rect(20, y, pageW - 40, boxHeight, 'F')
+        doc.rect(20, y, pageW - 40, boxH, 'F')
         y += 5
 
         doc.setFont('helvetica', 'normal')
@@ -654,11 +730,9 @@ function ProductSaleInvoice({ sale, items, onClose }) {
             '',
             'Subtotal: Rs.' + Number(sale.subtotal).toLocaleString('en-IN'),
         ]
-
         if (sale.discount > 0) {
             msgParts.push('Discount: Rs.' + Number(sale.discount).toLocaleString('en-IN'))
         }
-
         msgParts.push(
             'Total Paid: Rs.' + Number(sale.total).toLocaleString('en-IN'),
             'Payment: ' + sale.payment_mode.toUpperCase(),
@@ -675,11 +749,14 @@ function ProductSaleInvoice({ sale, items, onClose }) {
         window.open('https://wa.me/' + phoneWithCode + '?text=' + encodeURIComponent(msg), '_blank')
     }
 
+    const totalProfit = Number(sale.total_profit || 0)
+    const margin = Number(sale.total) > 0
+        ? Math.round((totalProfit / Number(sale.total)) * 100)
+        : 0
+
     return (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl">
-
-                {/* Toolbar */}
                 <div className="flex items-center justify-between p-4 border-b border-gray-100">
                     <h2 className="text-sm font-semibold text-gray-800">Product Sale Receipt</h2>
                     <div className="flex gap-2">
@@ -698,10 +775,7 @@ function ProductSaleInvoice({ sale, items, onClose }) {
                     </div>
                 </div>
 
-                {/* Preview */}
                 <div className="p-5 max-h-[70vh] overflow-y-auto">
-
-                    {/* Header */}
                     <div className="flex justify-between items-start mb-4">
                         <div>
                             <div className="text-lg font-bold text-pink-700">{salonInfo.name}</div>
@@ -727,7 +801,6 @@ function ProductSaleInvoice({ sale, items, onClose }) {
                         </div>
                     )}
 
-                    {/* Items table */}
                     <table className="w-full text-xs mb-3">
                         <thead>
                             <tr className="bg-pink-50">
@@ -753,7 +826,6 @@ function ProductSaleInvoice({ sale, items, onClose }) {
                         </tbody>
                     </table>
 
-                    {/* Totals */}
                     <div className="bg-gray-50 rounded-xl p-3 space-y-1.5 text-sm">
                         <div className="flex justify-between">
                             <span className="text-gray-500">Subtotal</span>
@@ -767,14 +839,20 @@ function ProductSaleInvoice({ sale, items, onClose }) {
                         )}
                         <div className="flex justify-between font-bold text-base border-t border-gray-200 pt-2">
                             <span>Total Paid</span>
-                            <span className="text-pink-700">
-                                Rs.{Number(sale.total).toLocaleString('en-IN')}
-                            </span>
+                            <span className="text-pink-700">Rs.{Number(sale.total).toLocaleString('en-IN')}</span>
                         </div>
                         <div className="flex justify-between text-xs text-gray-400">
                             <span>Payment</span>
                             <span className="capitalize font-medium text-gray-600">{sale.payment_mode}</span>
                         </div>
+                        {totalProfit > 0 && (
+                            <div className="flex justify-between text-xs border-t border-gray-100 pt-1.5">
+                                <span className="text-gray-400">Profit</span>
+                                <span className="text-green-600 font-medium">
+                                    Rs.{Math.round(totalProfit).toLocaleString('en-IN')} ({margin}%)
+                                </span>
+                            </div>
+                        )}
                     </div>
 
                     <div className="text-center mt-4 text-xs text-gray-400">

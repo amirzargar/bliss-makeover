@@ -27,6 +27,8 @@ export default function Reports() {
     const [tierDist, setTierDist] = useState([])
     const [summary, setSummary] = useState({ totalRevenue: 0, totalDiscount: 0, avgBill: 0, txnCount: 0, newCustomers: 0 })
     const [sourceBreakdown, setSourceBreakdown] = useState({ walkin: 0, prebook: 0, portal: 0 })
+    const [productSummary, setProductSummary] = useState({ revenue: 0, profit: 0, cost: 0, count: 0 })
+    const [topProducts, setTopProducts] = useState([])
     const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7))
 
     useEffect(() => { fetchReports() }, [selectedMonth])
@@ -45,7 +47,10 @@ export default function Reports() {
         historyDate.setMonth(historyDate.getMonth() - 5)
         const historyStart = historyDate.toISOString().slice(0, 7) + '-01T00:00:00'
 
-        const [txns, allTxns, appts, staff, customers, commissions, sourceStats] = await Promise.all([
+        const [
+            txns, allTxns, appts, staff, customers,
+            commissions, sourceStats, productSales, productItems
+        ] = await Promise.all([
             supabase.from('transactions')
                 .select('total, discount_amount, payment_mode, created_at, customers(name)')
                 .gte('created_at', monthStart)
@@ -75,20 +80,56 @@ export default function Reports() {
                 .select('booking_source')
                 .gte('scheduled_at', monthStart)
                 .lt('scheduled_at', monthEnd),
+
+            // Product sales this month
+            supabase.from('product_sales')
+                .select('total, total_cost, total_profit, payment_mode, created_at')
+                .gte('created_at', monthStart)
+                .lt('created_at', monthEnd),
+
+            // Product sale items for top products
+            supabase.from('product_sale_items')
+                .select('product_name, quantity, total_price, profit, product_sales(created_at)')
+                .gte('product_sales.created_at', monthStart),
         ])
 
         const txnData = txns.data || []
         const apptData = appts.data || []
         const custData = customers.data || []
+        const prodSales = productSales.data || []
+        const prodItems = productItems.data || []
 
-        // Summary
+        // Service revenue summary
         const totalRevenue = txnData.reduce((s, t) => s + Number(t.total || 0), 0)
         const totalDiscount = txnData.reduce((s, t) => s + Number(t.discount_amount || 0), 0)
         const avgBill = txnData.length ? totalRevenue / txnData.length : 0
         const newCustomers = custData.filter(c => c.created_at?.slice(0, 7) === selectedMonth).length
         setSummary({ totalRevenue, totalDiscount, avgBill, txnCount: txnData.length, newCustomers })
 
-        // Revenue trend
+        // Product sales summary
+        const prodRevenue = prodSales.reduce((s, p) => s + Number(p.total || 0), 0)
+        const prodCost = prodSales.reduce((s, p) => s + Number(p.total_cost || 0), 0)
+        const prodProfit = prodSales.reduce((s, p) => s + Number(p.total_profit || 0), 0)
+        setProductSummary({ revenue: prodRevenue, cost: prodCost, profit: prodProfit, count: prodSales.length })
+
+        // Top products by revenue
+        const productMap = {}
+        prodItems.forEach(item => {
+            if (!item.product_name) return
+            if (!productMap[item.product_name]) {
+                productMap[item.product_name] = { name: item.product_name, qty: 0, revenue: 0, profit: 0 }
+            }
+            productMap[item.product_name].qty += Number(item.quantity || 0)
+            productMap[item.product_name].revenue += Number(item.total_price || 0)
+            productMap[item.product_name].profit += Number(item.profit || 0)
+        })
+        setTopProducts(
+            Object.values(productMap)
+                .sort((a, b) => b.revenue - a.revenue)
+                .slice(0, 6)
+        )
+
+        // Revenue trend (service only)
         const revByMonth = {}
             ; (allTxns.data || []).forEach(t => {
                 if (!t.created_at) return
@@ -148,7 +189,7 @@ export default function Reports() {
             name: name.charAt(0).toUpperCase() + name.slice(1), value
         })))
 
-        // Booking source breakdown
+        // Booking source
         const sourceData = sourceStats.data || []
         const walkinCount = sourceData.filter(a => a.booking_source === 'walk_in').length
         const prebookCount = sourceData.filter(a => a.booking_source === 'staff' || !a.booking_source).length
@@ -162,12 +203,26 @@ export default function Reports() {
         const rows = [
             ['Bliss Makeover - Monthly Report', selectedMonth],
             [],
-            ['SUMMARY'],
+            ['SERVICE REVENUE SUMMARY'],
             ['Total Revenue', 'Rs.' + (summary.totalRevenue ?? 0).toLocaleString('en-IN')],
             ['Total Transactions', summary.txnCount ?? 0],
             ['Average Bill', 'Rs.' + Math.round(summary.avgBill ?? 0).toLocaleString('en-IN')],
             ['Total Discounts Given', 'Rs.' + (summary.totalDiscount ?? 0).toLocaleString('en-IN')],
             ['New Customers', summary.newCustomers ?? 0],
+            [],
+            ['PRODUCT SALES SUMMARY'],
+            ['Product Revenue', 'Rs.' + Math.round(productSummary.revenue).toLocaleString('en-IN')],
+            ['Product Cost', 'Rs.' + Math.round(productSummary.cost).toLocaleString('en-IN')],
+            ['Product Profit', 'Rs.' + Math.round(productSummary.profit).toLocaleString('en-IN')],
+            ['Total Sales', productSummary.count],
+            [],
+            ['TOP PRODUCTS'],
+            ['Product', 'Qty Sold', 'Revenue', 'Profit'],
+            ...topProducts.map(p => [
+                p.name, p.qty,
+                'Rs.' + Math.round(p.revenue).toLocaleString('en-IN'),
+                'Rs.' + Math.round(p.profit).toLocaleString('en-IN'),
+            ]),
             [],
             ['BOOKING SOURCES'],
             ['Walk-ins', sourceBreakdown.walkin],
@@ -197,6 +252,10 @@ export default function Reports() {
     }
 
     const totalBookings = sourceBreakdown.walkin + sourceBreakdown.prebook + sourceBreakdown.portal
+    const combinedRevenue = (summary.totalRevenue || 0) + (productSummary.revenue || 0)
+    const prodMargin = productSummary.revenue > 0
+        ? Math.round((productSummary.profit / productSummary.revenue) * 100)
+        : 0
 
     if (loading) return (
         <div className="flex items-center justify-center h-64 text-gray-400">Loading reports...</div>
@@ -222,10 +281,40 @@ export default function Reports() {
                 </div>
             </div>
 
-            {/* Summary cards */}
+            {/* Combined revenue banner */}
+            {productSummary.count > 0 && (
+                <div className="bg-gradient-to-r from-pink-600 to-pink-500 rounded-xl p-4 text-white">
+                    <div className="flex items-center justify-between flex-wrap gap-3">
+                        <div>
+                            <div className="text-xs text-pink-200 mb-1">Total Business Revenue this month</div>
+                            <div className="text-3xl font-bold">
+                                Rs.{Math.round(combinedRevenue).toLocaleString('en-IN')}
+                            </div>
+                            <div className="text-xs text-pink-200 mt-1">
+                                Services: Rs.{Math.round(summary.totalRevenue).toLocaleString('en-IN')} +
+                                Products: Rs.{Math.round(productSummary.revenue).toLocaleString('en-IN')}
+                            </div>
+                        </div>
+                        <div className="flex gap-4">
+                            <div className="text-center">
+                                <div className="text-xl font-bold">
+                                    Rs.{Math.round(productSummary.profit).toLocaleString('en-IN')}
+                                </div>
+                                <div className="text-xs text-pink-200">Product profit</div>
+                            </div>
+                            <div className="text-center">
+                                <div className="text-xl font-bold">{prodMargin}%</div>
+                                <div className="text-xs text-pink-200">Product margin</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Service summary cards */}
             <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
                 <StatCard
-                    label="Total revenue"
+                    label="Service revenue"
                     value={'Rs.' + Math.round(summary.totalRevenue ?? 0).toLocaleString('en-IN')}
                     sub={(summary.txnCount ?? 0) + ' transactions'}
                     color="text-pink-700" />
@@ -236,7 +325,7 @@ export default function Reports() {
                 <StatCard
                     label="Discounts given"
                     value={'Rs.' + Math.round(summary.totalDiscount ?? 0).toLocaleString('en-IN')}
-                    sub="total savings to customers" />
+                    sub="total savings" />
                 <StatCard
                     label="New customers"
                     value={summary.newCustomers ?? 0}
@@ -245,6 +334,82 @@ export default function Reports() {
                     label="Services done"
                     value={staffPerf.reduce((s, st) => s + (st.services ?? 0), 0)}
                     sub="completed appointments" />
+            </div>
+
+            {/* Product sales section */}
+            <div className="bg-white rounded-xl border border-gray-100 p-4">
+                <h2 className="text-sm font-semibold text-gray-700 mb-4">Product Sales this month</h2>
+
+                {productSummary.count === 0 ? (
+                    <div className="text-center text-gray-300 py-6 text-sm">No product sales this month</div>
+                ) : (
+                    <>
+                        {/* Product summary cards */}
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+                            <div className="bg-gray-50 rounded-xl p-3 text-center">
+                                <div className="text-xl font-semibold text-gray-800">
+                                    {productSummary.count}
+                                </div>
+                                <div className="text-xs text-gray-400 mt-0.5">Sales</div>
+                            </div>
+                            <div className="bg-blue-50 rounded-xl p-3 text-center">
+                                <div className="text-xl font-semibold text-blue-700">
+                                    Rs.{Math.round(productSummary.revenue).toLocaleString('en-IN')}
+                                </div>
+                                <div className="text-xs text-blue-500 mt-0.5">Revenue</div>
+                            </div>
+                            <div className="bg-amber-50 rounded-xl p-3 text-center">
+                                <div className="text-xl font-semibold text-amber-700">
+                                    Rs.{Math.round(productSummary.cost).toLocaleString('en-IN')}
+                                </div>
+                                <div className="text-xs text-amber-600 mt-0.5">Cost</div>
+                            </div>
+                            <div className="bg-green-50 rounded-xl p-3 text-center">
+                                <div className="text-xl font-semibold text-green-700">
+                                    Rs.{Math.round(productSummary.profit).toLocaleString('en-IN')}
+                                </div>
+                                <div className="text-xs text-green-600 mt-0.5">Profit ({prodMargin}%)</div>
+                            </div>
+                        </div>
+
+                        {/* Top products */}
+                        {topProducts.length > 0 && (
+                            <div>
+                                <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
+                                    Top Products by Revenue
+                                </h3>
+                                <div className="space-y-2">
+                                    {topProducts.map((p, i) => {
+                                        const margin = p.revenue > 0
+                                            ? Math.round((p.profit / p.revenue) * 100)
+                                            : 0
+                                        return (
+                                            <div key={p.name} className="flex items-center gap-3 bg-gray-50 rounded-xl px-3 py-2.5">
+                                                <div className="w-6 h-6 rounded-full bg-pink-100 text-pink-700 text-xs font-bold flex items-center justify-center flex-shrink-0">
+                                                    {i + 1}
+                                                </div>
+                                                <div className="flex-1 min-w-0">
+                                                    <div className="text-sm font-medium text-gray-800 truncate">{p.name}</div>
+                                                    <div className="text-xs text-gray-400">{p.qty} units sold</div>
+                                                </div>
+                                                <div className="text-right flex-shrink-0">
+                                                    <div className="text-sm font-semibold text-gray-800">
+                                                        Rs.{Math.round(p.revenue).toLocaleString('en-IN')}
+                                                    </div>
+                                                    {p.profit > 0 && (
+                                                        <div className="text-xs text-green-600">
+                                                            +Rs.{Math.round(p.profit).toLocaleString('en-IN')} ({margin}%)
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        )
+                                    })}
+                                </div>
+                            </div>
+                        )}
+                    </>
+                )}
             </div>
 
             {/* Booking source breakdown */}
@@ -292,7 +457,7 @@ export default function Reports() {
             {/* Revenue trend + Payment mix */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="md:col-span-2 bg-white rounded-xl border border-gray-100 p-4">
-                    <h2 className="text-sm font-semibold text-gray-700 mb-4">Revenue trend (last 6 months)</h2>
+                    <h2 className="text-sm font-semibold text-gray-700 mb-4">Service revenue trend (last 6 months)</h2>
                     {monthlyRev.length === 0 ? (
                         <div className="text-center text-gray-300 py-8 text-sm">No data yet</div>
                     ) : (

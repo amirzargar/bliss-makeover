@@ -9,6 +9,7 @@ const items = [
     { to: '/staff', label: 'Staff & Commission', desc: 'Team and payouts', adminOnly: true },
     { to: '/reports', label: 'Reports', desc: 'Business analytics', adminOnly: true },
     { to: '/bulk-import', label: 'Bulk Import', desc: 'Import customers and rate list', adminOnly: true },
+    { to: '/audit-log', label: 'Audit Log', desc: 'View all admin edits and changes', adminOnly: true },
 ]
 
 export default function More() {

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import Invoice from '../components/Invoice'
+import { useAuthStore } from '../store/authStore'
 
 const STATUS_COLORS = {
     confirmed: 'bg-blue-50 text-blue-700',
@@ -57,9 +58,13 @@ export default function Appointments() {
     const [showForm, setShowForm] = useState(false)
     const [showCheckout, setShowCheckout] = useState(null)
     const [showWAPreview, setShowWAPreview] = useState(null)
+    const [showEdit, setShowEdit] = useState(null)
     const [dateFilter, setDateFilter] = useState(getTodayLocal())
     const [view, setView] = useState('list')
     const [selectedAppt, setSelectedAppt] = useState(null)
+
+    const { profile } = useAuthStore()
+    const isAdmin = profile?.role === 'admin'
 
     useEffect(() => { fetchAll() }, [dateFilter])
 
@@ -176,7 +181,7 @@ export default function Appointments() {
                 )}
             </div>
 
-            {/* Status legend for calendar views */}
+            {/* Status legend */}
             {(view === 'day' || view === 'week') && (
                 <div className="flex gap-3 mb-4 flex-wrap">
                     {Object.entries(STATUS_CAL).map(([status, colors]) => (
@@ -210,6 +215,8 @@ export default function Appointments() {
                                             onCheckout={() => setShowCheckout(a)}
                                             onWhatsApp={() => setShowWAPreview(a)}
                                             onStatusChange={updateStatus}
+                                            onEdit={() => setShowEdit(a)}
+                                            isAdmin={isAdmin}
                                         />
                                     ))}
                                 </div>
@@ -234,7 +241,9 @@ export default function Appointments() {
                             </div>
                             <div className="overflow-y-auto max-h-[600px]">
                                 {HOURS.map(hour => {
-                                    const hourAppts = todayAppts.filter(a => new Date(a.scheduled_at).getHours() === hour)
+                                    const hourAppts = todayAppts.filter(a =>
+                                        new Date(a.scheduled_at).getHours() === hour
+                                    )
                                     return (
                                         <div key={hour} className="flex border-b border-gray-50 min-h-[56px]">
                                             <div className="w-16 flex-shrink-0 px-3 py-2 text-xs text-gray-400 font-medium border-r border-gray-100">
@@ -290,11 +299,13 @@ export default function Appointments() {
                                             {hour > 12 ? (hour - 12) + 'p' : hour === 12 ? '12p' : hour + 'a'}
                                         </div>
                                         {weekDates.map(d => {
-                                            const dayHourAppts = appointments.filter(a => {
-                                                return a.scheduled_at.split('T')[0] === d && new Date(a.scheduled_at).getHours() === hour
-                                            })
+                                            const dayHourAppts = appointments.filter(a =>
+                                                a.scheduled_at.split('T')[0] === d &&
+                                                new Date(a.scheduled_at).getHours() === hour
+                                            )
                                             return (
-                                                <div key={d} className={`flex-1 border-r border-gray-50 last:border-r-0 p-0.5 ${isToday(d) ? 'bg-pink-50/40' : ''}`}>
+                                                <div key={d}
+                                                    className={`flex-1 border-r border-gray-50 last:border-r-0 p-0.5 ${isToday(d) ? 'bg-pink-50/40' : ''}`}>
                                                     {dayHourAppts.map(a => {
                                                         const colors = STATUS_CAL[a.status] || STATUS_CAL.confirmed
                                                         return (
@@ -383,6 +394,12 @@ export default function Appointments() {
                                     Checkout
                                 </button>
                             )}
+                            {isAdmin && (
+                                <button onClick={() => { setShowEdit(selectedAppt); setSelectedAppt(null) }}
+                                    className="flex-1 bg-blue-500 text-white py-2 rounded-lg text-xs font-medium hover:bg-blue-600">
+                                    Edit
+                                </button>
+                            )}
                             <button onClick={() => setSelectedAppt(null)}
                                 className="flex-1 border border-gray-200 text-gray-500 py-2 rounded-lg text-xs hover:bg-gray-50">
                                 Close
@@ -419,11 +436,23 @@ export default function Appointments() {
                     onClose={() => setShowWAPreview(null)}
                 />
             )}
+
+            {/* Edit Modal - Admin only */}
+            {showEdit && isAdmin && (
+                <EditAppointmentModal
+                    appointment={showEdit}
+                    services={services}
+                    staff={staff}
+                    profile={profile}
+                    onClose={() => setShowEdit(null)}
+                    onSaved={() => { setShowEdit(null); fetchAll() }}
+                />
+            )}
         </div>
     )
 }
 
-function AppointmentCard({ a, onCheckout, onWhatsApp, onStatusChange }) {
+function AppointmentCard({ a, onCheckout, onWhatsApp, onStatusChange, onEdit, isAdmin }) {
     return (
         <div className="bg-white rounded-xl border border-gray-100 p-4 hover:border-gray-200 transition-colors">
             {/* Top row */}
@@ -484,6 +513,12 @@ function AppointmentCard({ a, onCheckout, onWhatsApp, onStatusChange }) {
                         <button onClick={onCheckout}
                             className="bg-green-700 text-white px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-green-800">
                             Checkout
+                        </button>
+                    )}
+                    {isAdmin && (
+                        <button onClick={onEdit}
+                            className="bg-blue-500 text-white px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-blue-600">
+                            Edit
                         </button>
                     )}
                 </div>
@@ -650,7 +685,6 @@ function BookingForm({ customers, staff, services, onClose, onBooked }) {
                             </span>
                         )}
                     </label>
-
                     {selectedServices.length > 0 && (
                         <div className="flex flex-wrap gap-1.5 mb-2">
                             {selectedServices.map(s => (
@@ -658,14 +692,11 @@ function BookingForm({ customers, staff, services, onClose, onBooked }) {
                                     className="flex items-center gap-1 bg-pink-100 text-pink-700 px-2 py-1 rounded-lg text-xs font-medium">
                                     {s.name}
                                     <button onClick={() => toggleService(s)}
-                                        className="text-pink-400 hover:text-pink-700 ml-0.5 font-bold">
-                                        x
-                                    </button>
+                                        className="text-pink-400 hover:text-pink-700 ml-0.5 font-bold">x</button>
                                 </div>
                             ))}
                         </div>
                     )}
-
                     <div className="flex gap-1.5 mb-2 overflow-x-auto pb-1">
                         {CATEGORIES.map(c => (
                             <button key={c} onClick={() => setCatFilter(c)}
@@ -675,7 +706,6 @@ function BookingForm({ customers, staff, services, onClose, onBooked }) {
                             </button>
                         ))}
                     </div>
-
                     <div className="max-h-48 overflow-y-auto space-y-1 border border-gray-100 rounded-xl p-2">
                         {filteredServices.map(s => {
                             const isSelected = selectedServices.some(sv => sv.id === s.id)
@@ -963,7 +993,6 @@ function CheckoutModal({ appointment: a, onClose, onDone }) {
                     {a.customers?.name} - {a.services_summary || a.services?.name}
                 </p>
 
-                {/* Services breakdown if multi-service */}
                 {apptServices.length > 1 && (
                     <div className="bg-gray-50 rounded-xl p-3 mb-3 text-xs space-y-1">
                         <div className="font-medium text-gray-600 mb-1">Services</div>
@@ -1180,7 +1209,6 @@ function WhatsAppModal({ appointment: a, onClose }) {
                     <button onClick={onClose}
                         className="text-gray-300 hover:text-gray-500 font-bold text-lg">x</button>
                 </div>
-
                 <div className="mb-4">
                     <p className="text-xs font-medium text-gray-500 mb-2">Choose template</p>
                     <div className="grid grid-cols-2 gap-2">
@@ -1195,7 +1223,6 @@ function WhatsAppModal({ appointment: a, onClose }) {
                         ))}
                     </div>
                 </div>
-
                 <div className="mb-4">
                     <p className="text-xs font-medium text-gray-500 mb-2">
                         Message preview (you can edit before sending)
@@ -1204,7 +1231,6 @@ function WhatsAppModal({ appointment: a, onClose }) {
                         className="w-full border border-gray-200 rounded-xl px-3 py-3 text-sm text-gray-700 focus:outline-none focus:border-green-300 leading-relaxed"
                         rows={10} />
                 </div>
-
                 {!customerPhone && (
                     <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4">
                         <p className="text-xs text-amber-700 font-medium">
@@ -1212,7 +1238,6 @@ function WhatsAppModal({ appointment: a, onClose }) {
                         </p>
                     </div>
                 )}
-
                 <div className="flex gap-2">
                     <button onClick={copyMessage}
                         className="flex-1 border border-gray-200 text-gray-600 py-2 rounded-lg text-sm font-medium hover:bg-gray-50">
@@ -1226,6 +1251,179 @@ function WhatsAppModal({ appointment: a, onClose }) {
                 <p className="text-xs text-gray-400 text-center mt-3">
                     Opens WhatsApp with this message and number pre-filled
                 </p>
+            </div>
+        </div>
+    )
+}
+
+function EditAppointmentModal({ appointment: a, services, staff, profile, onClose, onSaved }) {
+    const [form, setForm] = useState({
+        service_id: a.service_id || '',
+        staff_id: a.staff_id || '',
+        scheduled_at: a.scheduled_at ? a.scheduled_at.slice(0, 16) : '',
+        amount: a.amount || '',
+        status: a.status || 'confirmed',
+        notes: a.notes || '',
+    })
+    const [saving, setSaving] = useState(false)
+    const [reason, setReason] = useState('')
+
+    async function save() {
+        if (!reason.trim()) return alert('Please enter a reason for editing this appointment')
+        setSaving(true)
+
+        await supabase.from('audit_log').insert({
+            table_name: 'appointments',
+            record_id: a.id,
+            action: 'edit',
+            changed_by: profile?.id || null,
+            changed_by_name: profile?.name || 'Admin',
+            old_values: {
+                service_id: a.service_id,
+                staff_id: a.staff_id,
+                scheduled_at: a.scheduled_at,
+                amount: a.amount,
+                status: a.status,
+                notes: a.notes,
+            },
+            new_values: {
+                ...form,
+                edit_reason: reason,
+            },
+        })
+
+        const { error } = await supabase.from('appointments').update({
+            service_id: form.service_id || null,
+            staff_id: form.staff_id || null,
+            scheduled_at: form.scheduled_at,
+            amount: Number(form.amount),
+            status: form.status,
+            notes: form.notes || null,
+        }).eq('id', a.id)
+
+        if (error) { alert('Update failed: ' + error.message); setSaving(false); return }
+
+        setSaving(false)
+        onSaved()
+    }
+
+    return (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-2xl w-full max-w-md p-6 max-h-[90vh] overflow-y-auto">
+                <div className="flex items-center justify-between mb-5">
+                    <div>
+                        <h2 className="text-base font-semibold text-gray-800">Edit Appointment</h2>
+                        <p className="text-xs text-gray-400 mt-0.5">
+                            {a.customers?.name} - Admin only
+                        </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">
+                            Admin
+                        </span>
+                        <button onClick={onClose}
+                            className="text-gray-300 hover:text-gray-500 font-bold text-lg">x</button>
+                    </div>
+                </div>
+
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-4">
+                    <p className="text-xs text-amber-700 font-medium">
+                        All edits are logged with your name and timestamp for audit purposes.
+                    </p>
+                </div>
+
+                <div className="space-y-3">
+                    <div>
+                        <label className="text-xs text-gray-500 mb-1 block">Service</label>
+                        <select value={form.service_id}
+                            onChange={e => {
+                                const svc = services.find(s => s.id === e.target.value)
+                                setForm(f => ({ ...f, service_id: e.target.value, amount: svc ? svc.price : f.amount }))
+                            }}
+                            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-300">
+                            <option value="">Select service...</option>
+                            {services.map(s => (
+                                <option key={s.id} value={s.id}>
+                                    {s.name} - Rs.{Number(s.price).toLocaleString('en-IN')}
+                                </option>
+                            ))}
+                        </select>
+                    </div>
+
+                    <div>
+                        <label className="text-xs text-gray-500 mb-1 block">Staff</label>
+                        <select value={form.staff_id}
+                            onChange={e => setForm(f => ({ ...f, staff_id: e.target.value }))}
+                            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-300">
+                            <option value="">Unassigned</option>
+                            {staff.map(s => (
+                                <option key={s.id} value={s.id}>{s.name}</option>
+                            ))}
+                        </select>
+                    </div>
+
+                    <div>
+                        <label className="text-xs text-gray-500 mb-1 block">Date and Time</label>
+                        <input type="datetime-local" value={form.scheduled_at}
+                            onChange={e => setForm(f => ({ ...f, scheduled_at: e.target.value }))}
+                            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-300" />
+                    </div>
+
+                    <div>
+                        <label className="text-xs text-gray-500 mb-1 block">Amount (Rs.)</label>
+                        <input type="number" value={form.amount}
+                            onChange={e => setForm(f => ({ ...f, amount: e.target.value }))}
+                            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-300" />
+                        {Number(form.amount) !== Number(a.amount) && (
+                            <p className="text-xs text-amber-600 mt-1">
+                                Original amount: Rs.{Number(a.amount).toLocaleString('en-IN')}
+                            </p>
+                        )}
+                    </div>
+
+                    <div>
+                        <label className="text-xs text-gray-500 mb-1 block">Status</label>
+                        <select value={form.status}
+                            onChange={e => setForm(f => ({ ...f, status: e.target.value }))}
+                            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-300">
+                            <option value="confirmed">Confirmed</option>
+                            <option value="in_progress">In Progress</option>
+                            <option value="completed">Completed</option>
+                            <option value="cancelled">Cancelled</option>
+                            <option value="no_show">No Show</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label className="text-xs text-gray-500 mb-1 block">Notes</label>
+                        <textarea value={form.notes}
+                            onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
+                            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-300"
+                            rows={2} placeholder="Special requests, allergies..." />
+                    </div>
+
+                    <div className="bg-blue-50 border border-blue-200 rounded-xl p-3">
+                        <label className="text-xs font-semibold text-blue-700 mb-1 block">
+                            Reason for edit * (required for audit log)
+                        </label>
+                        <textarea value={reason}
+                            onChange={e => setReason(e.target.value)}
+                            className="w-full border border-blue-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400 bg-white"
+                            rows={2}
+                            placeholder="e.g. Customer requested service change, correcting wrong entry..." />
+                    </div>
+                </div>
+
+                <div className="flex gap-2 mt-5">
+                    <button onClick={onClose}
+                        className="flex-1 border border-gray-200 text-gray-500 py-2 rounded-lg text-sm hover:bg-gray-50">
+                        Cancel
+                    </button>
+                    <button onClick={save} disabled={saving || !reason.trim()}
+                        className="flex-1 bg-blue-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-40">
+                        {saving ? 'Saving...' : 'Save Changes'}
+                    </button>
+                </div>
             </div>
         </div>
     )

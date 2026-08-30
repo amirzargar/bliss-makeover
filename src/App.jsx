@@ -16,6 +16,7 @@ import ProductSales from './pages/ProductSales'
 import AppShell from './components/layout/AppShell'
 import PortalApp from './portal/PortalApp'
 import BulkImport from './pages/BulkImport'
+import AuditLog from './pages/AuditLog'
 
 function ProtectedRoute({ children, adminOnly = false }) {
     const { user, profile, loading } = useAuthStore()
@@ -57,6 +58,7 @@ export default function App() {
                     <Route path="staff" element={<ProtectedRoute adminOnly><Staff /></ProtectedRoute>} />
                     <Route path="reports" element={<ProtectedRoute adminOnly><Reports /></ProtectedRoute>} />
                     <Route path="bulk-import" element={<ProtectedRoute adminOnly><BulkImport /></ProtectedRoute>} />
+                    <Route path="audit-log" element={<ProtectedRoute adminOnly><AuditLog /></ProtectedRoute>} />
                 </Route>
             </Routes>
         </BrowserRouter>

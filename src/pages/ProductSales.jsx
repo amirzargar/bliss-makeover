@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
+import { useAuthStore } from '../store/authStore'
 
 export default function ProductSales() {
     const [products, setProducts] = useState([])
@@ -15,6 +16,10 @@ export default function ProductSales() {
     const [invoiceSale, setInvoiceSale] = useState(null)
     const [invoiceItems, setInvoiceItems] = useState([])
     const [summary, setSummary] = useState({ revenue: 0, cost: 0, profit: 0, count: 0 })
+    const [showEdit, setShowEdit] = useState(null)
+
+    const { profile } = useAuthStore()
+    const isAdmin = profile?.role === 'admin'
 
     const [form, setForm] = useState({
         customer_id: '',
@@ -47,7 +52,6 @@ export default function ProductSales() {
         setStaff(stf.data || [])
         setSales(sl.data || [])
 
-        // Calculate summary from recent sales
         const salesData = sl.data || []
         setSummary({
             revenue: salesData.reduce((s, sale) => s + Number(sale.total || 0), 0),
@@ -55,7 +59,6 @@ export default function ProductSales() {
             profit: salesData.reduce((s, sale) => s + Number(sale.total_profit || 0), 0),
             count: salesData.length,
         })
-
         setLoading(false)
     }
 
@@ -126,7 +129,6 @@ export default function ProductSales() {
             return
         }
 
-        // Insert items with cost and profit
         const items = cart.map(c => ({
             product_sale_id: sale.id,
             inventory_id: c.id,
@@ -139,7 +141,6 @@ export default function ProductSales() {
         }))
         await supabase.from('product_sale_items').insert(items)
 
-        // Deduct stock
         for (const c of cart) {
             const product = products.find(p => p.id === c.id)
             if (product) {
@@ -150,7 +151,6 @@ export default function ProductSales() {
             }
         }
 
-        // Update customer spending
         if (form.customer_id) {
             const { data: cust } = await supabase
                 .from('customers')
@@ -179,7 +179,6 @@ export default function ProductSales() {
             }
         }
 
-        // Fetch sale with customer for invoice
         const { data: saleWithCustomer } = await supabase
             .from('product_sales')
             .select('*, customers(name, phone)')
@@ -307,6 +306,13 @@ export default function ProductSales() {
                                             <div className="text-xs text-gray-400">{margin}% margin</div>
                                         </div>
                                     )}
+                                    {isAdmin && (
+                                        <button
+                                            onClick={() => setShowEdit(s)}
+                                            className="text-xs text-blue-500 hover:text-blue-700 border border-blue-200 px-2 py-1 rounded-lg hover:bg-blue-50 flex-shrink-0">
+                                            Edit
+                                        </button>
+                                    )}
                                 </div>
                             )
                         })}
@@ -353,10 +359,8 @@ export default function ProductSales() {
                                                     <div className="text-sm font-medium text-gray-800 truncate">{p.name}</div>
                                                     <div className="text-xs text-gray-400 mt-0.5">
                                                         Rs.{Number(p.unit_price || 0).toLocaleString('en-IN')}
-                                                        {Number(p.cost_price) > 0 && (
-                                                            <span className="text-green-600 ml-1">
-                                                                ({margin}% margin)
-                                                            </span>
+                                                        {margin !== null && (
+                                                            <span className="text-green-600 ml-1">({margin}% margin)</span>
                                                         )}
                                                         {' - '}{p.stock_qty} {p.unit} left
                                                     </div>
@@ -423,7 +427,7 @@ export default function ProductSales() {
                                     </div>
                                 )}
 
-                                {/* Bill summary with profit */}
+                                {/* Bill summary */}
                                 {cart.length > 0 && (
                                     <div className="bg-gray-50 rounded-xl p-3 mb-4 text-sm space-y-2">
                                         <div className="flex justify-between">
@@ -450,8 +454,7 @@ export default function ProductSales() {
                                                     <span className="text-gray-600">Profit on this sale</span>
                                                     <span className={totalProfit >= 0 ? 'text-green-600' : 'text-red-500'}>
                                                         Rs.{Math.round(totalProfit).toLocaleString('en-IN')}
-                                                        {' '}
-                                                        ({total > 0 ? Math.round((totalProfit / total) * 100) : 0}%)
+                                                        {' '}({total > 0 ? Math.round((totalProfit / total) * 100) : 0}%)
                                                     </span>
                                                 </div>
                                             </>
@@ -548,6 +551,16 @@ export default function ProductSales() {
                     onClose={() => { setShowInvoice(false); setInvoiceSale(null); setInvoiceItems([]) }}
                 />
             )}
+
+            {/* Edit Sale Modal - Admin only */}
+            {showEdit && isAdmin && (
+                <EditSaleModal
+                    sale={showEdit}
+                    profile={profile}
+                    onClose={() => setShowEdit(null)}
+                    onSaved={() => { setShowEdit(null); fetchAll() }}
+                />
+            )}
         </div>
     )
 }
@@ -568,7 +581,6 @@ function ProductSaleInvoice({ sale, items, onClose }) {
     const date = new Date(sale.created_at).toLocaleDateString('en-IN', {
         day: 'numeric', month: 'long', year: 'numeric'
     })
-
     const time = new Date(sale.created_at).toLocaleTimeString('en-IN', {
         hour: '2-digit', minute: '2-digit'
     })
@@ -632,7 +644,6 @@ function ProductSaleInvoice({ sale, items, onClose }) {
             y += 3
         }
 
-        // Items table
         doc.setFillColor(253, 242, 248)
         doc.rect(20, y, pageW - 40, 8, 'F')
         doc.setFont('helvetica', 'bold')
@@ -774,7 +785,6 @@ function ProductSaleInvoice({ sale, items, onClose }) {
                         </button>
                     </div>
                 </div>
-
                 <div className="p-5 max-h-[70vh] overflow-y-auto">
                     <div className="flex justify-between items-start mb-4">
                         <div>
@@ -788,9 +798,7 @@ function ProductSaleInvoice({ sale, items, onClose }) {
                             <div className="text-xs text-gray-400">{date} {time}</div>
                         </div>
                     </div>
-
                     <div className="border-t-2 border-pink-500 mb-3" />
-
                     {sale.customers?.name && (
                         <div className="mb-3">
                             <div className="text-xs text-gray-400 mb-0.5">Customer</div>
@@ -800,7 +808,6 @@ function ProductSaleInvoice({ sale, items, onClose }) {
                             )}
                         </div>
                     )}
-
                     <table className="w-full text-xs mb-3">
                         <thead>
                             <tr className="bg-pink-50">
@@ -825,7 +832,6 @@ function ProductSaleInvoice({ sale, items, onClose }) {
                             ))}
                         </tbody>
                     </table>
-
                     <div className="bg-gray-50 rounded-xl p-3 space-y-1.5 text-sm">
                         <div className="flex justify-between">
                             <span className="text-gray-500">Subtotal</span>
@@ -854,10 +860,238 @@ function ProductSaleInvoice({ sale, items, onClose }) {
                             </div>
                         )}
                     </div>
-
                     <div className="text-center mt-4 text-xs text-gray-400">
                         Thank you for shopping at Bliss Makeover!
                     </div>
+                </div>
+            </div>
+        </div>
+    )
+}
+
+function EditSaleModal({ sale, profile, onClose, onSaved }) {
+    const [discount, setDiscount] = useState(Number(sale.discount || 0))
+    const [paymentMode, setPaymentMode] = useState(sale.payment_mode || 'cash')
+    const [notes, setNotes] = useState(sale.notes || '')
+    const [reason, setReason] = useState('')
+    const [saving, setSaving] = useState(false)
+    const [saleItems, setSaleItems] = useState([])
+    const [loadingItems, setLoadingItems] = useState(true)
+
+    useEffect(() => {
+        async function loadItems() {
+            const { data } = await supabase
+                .from('product_sale_items')
+                .select('*')
+                .eq('product_sale_id', sale.id)
+            setSaleItems(data || [])
+            setLoadingItems(false)
+        }
+        loadItems()
+    }, [sale.id])
+
+    function updateItemPrice(id, price) {
+        setSaleItems(prev => prev.map(item =>
+            item.id === id
+                ? { ...item, unit_price: Number(price), total_price: Number(price) * item.quantity }
+                : item
+        ))
+    }
+
+    function updateItemQty(id, qty) {
+        setSaleItems(prev => prev.map(item =>
+            item.id === id
+                ? { ...item, quantity: Number(qty), total_price: item.unit_price * Number(qty) }
+                : item
+        ))
+    }
+
+    const subtotal = saleItems.reduce((s, i) => s + Number(i.total_price || 0), 0)
+    const newTotal = Math.max(0, subtotal - Number(discount || 0))
+    const totalCost = saleItems.reduce((s, i) => s + Number(i.cost_price || 0) * Number(i.quantity || 0), 0)
+    const newProfit = newTotal - totalCost
+
+    async function save() {
+        if (!reason.trim()) return alert('Please enter a reason for editing this sale')
+        setSaving(true)
+
+        await supabase.from('audit_log').insert({
+            table_name: 'product_sales',
+            record_id: sale.id,
+            action: 'edit',
+            changed_by: profile?.id || null,
+            changed_by_name: profile?.name || 'Admin',
+            old_values: {
+                discount: sale.discount,
+                total: sale.total,
+                payment_mode: sale.payment_mode,
+                notes: sale.notes,
+            },
+            new_values: {
+                discount,
+                total: newTotal,
+                payment_mode: paymentMode,
+                notes,
+                edit_reason: reason,
+            },
+        })
+
+        for (const item of saleItems) {
+            await supabase.from('product_sale_items').update({
+                unit_price: item.unit_price,
+                quantity: item.quantity,
+                total_price: item.total_price,
+            }).eq('id', item.id)
+        }
+
+        const { error } = await supabase.from('product_sales').update({
+            subtotal: subtotal,
+            discount: Number(discount || 0),
+            total: newTotal,
+            total_profit: newProfit,
+            payment_mode: paymentMode,
+            notes: notes || null,
+        }).eq('id', sale.id)
+
+        if (error) { alert('Update failed: ' + error.message); setSaving(false); return }
+
+        setSaving(false)
+        onSaved()
+    }
+
+    return (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-2xl w-full max-w-md p-6 max-h-[90vh] overflow-y-auto">
+                <div className="flex items-center justify-between mb-5">
+                    <div>
+                        <h2 className="text-base font-semibold text-gray-800">Edit Product Sale</h2>
+                        <p className="text-xs text-gray-400 mt-0.5">
+                            {sale.customers?.name || 'Walk-in'} - Admin only
+                        </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">
+                            Admin
+                        </span>
+                        <button onClick={onClose}
+                            className="text-gray-300 hover:text-gray-500 font-bold text-lg">x</button>
+                    </div>
+                </div>
+
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-4">
+                    <p className="text-xs text-amber-700 font-medium">
+                        All edits are logged with your name and timestamp for audit purposes.
+                    </p>
+                </div>
+
+                {loadingItems ? (
+                    <div className="text-center text-gray-400 py-8">Loading items...</div>
+                ) : (
+                    <div className="space-y-4">
+                        <div>
+                            <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 block">
+                                Sale Items
+                            </label>
+                            <div className="space-y-2">
+                                {saleItems.map(item => (
+                                    <div key={item.id} className="bg-gray-50 rounded-xl px-3 py-2.5">
+                                        <div className="font-medium text-gray-800 text-sm mb-2">{item.product_name}</div>
+                                        <div className="flex items-center gap-3">
+                                            <div className="flex items-center gap-1">
+                                                <span className="text-xs text-gray-400">Qty:</span>
+                                                <input type="number" value={item.quantity} min={1}
+                                                    onChange={e => updateItemQty(item.id, e.target.value)}
+                                                    className="w-16 border border-gray-200 rounded px-2 py-1 text-xs text-center focus:outline-none focus:border-blue-300" />
+                                            </div>
+                                            <div className="flex items-center gap-1">
+                                                <span className="text-xs text-gray-400">Price:</span>
+                                                <input type="number" value={item.unit_price} min={0}
+                                                    onChange={e => updateItemPrice(item.id, e.target.value)}
+                                                    className="w-24 border border-gray-200 rounded px-2 py-1 text-xs text-center focus:outline-none focus:border-blue-300" />
+                                            </div>
+                                            <span className="text-xs font-semibold text-gray-800 ml-auto">
+                                                Rs.{Number(item.total_price).toLocaleString('en-IN')}
+                                            </span>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+
+                        <div>
+                            <label className="text-xs text-gray-500 mb-1 block">Discount (Rs.)</label>
+                            <input type="number" value={discount} min={0} max={subtotal}
+                                onChange={e => setDiscount(e.target.value)}
+                                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-300" />
+                        </div>
+
+                        <div className="bg-gray-50 rounded-xl p-3 text-sm space-y-1.5">
+                            <div className="flex justify-between text-gray-500">
+                                <span>Subtotal</span>
+                                <span>Rs.{Math.round(subtotal).toLocaleString('en-IN')}</span>
+                            </div>
+                            {Number(discount) > 0 && (
+                                <div className="flex justify-between text-green-600">
+                                    <span>Discount</span>
+                                    <span>- Rs.{Number(discount).toLocaleString('en-IN')}</span>
+                                </div>
+                            )}
+                            <div className="flex justify-between font-bold text-base border-t border-gray-200 pt-2">
+                                <span>New Total</span>
+                                <span className="text-pink-700">Rs.{Math.round(newTotal).toLocaleString('en-IN')}</span>
+                            </div>
+                            {Number(sale.total) !== newTotal && (
+                                <p className="text-xs text-amber-600">
+                                    Original total: Rs.{Number(sale.total).toLocaleString('en-IN')}
+                                </p>
+                            )}
+                        </div>
+
+                        <div>
+                            <label className="text-xs text-gray-500 mb-2 block">Payment method</label>
+                            <div className="grid grid-cols-4 gap-2">
+                                {['cash', 'upi', 'card', 'wallet'].map(m => (
+                                    <button key={m} onClick={() => setPaymentMode(m)}
+                                        className={`py-2 rounded-lg text-xs font-medium capitalize transition-colors ${paymentMode === m
+                                                ? 'bg-blue-600 text-white'
+                                                : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                                            }`}>
+                                        {m}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
+                        <div>
+                            <label className="text-xs text-gray-500 mb-1 block">Notes</label>
+                            <input value={notes}
+                                onChange={e => setNotes(e.target.value)}
+                                placeholder="Any notes..."
+                                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-300" />
+                        </div>
+
+                        <div className="bg-blue-50 border border-blue-200 rounded-xl p-3">
+                            <label className="text-xs font-semibold text-blue-700 mb-1 block">
+                                Reason for edit * (required for audit log)
+                            </label>
+                            <textarea value={reason}
+                                onChange={e => setReason(e.target.value)}
+                                className="w-full border border-blue-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400 bg-white"
+                                rows={2}
+                                placeholder="e.g. Correcting wrong price, customer returned item..." />
+                        </div>
+                    </div>
+                )}
+
+                <div className="flex gap-2 mt-5">
+                    <button onClick={onClose}
+                        className="flex-1 border border-gray-200 text-gray-500 py-2 rounded-lg text-sm hover:bg-gray-50">
+                        Cancel
+                    </button>
+                    <button onClick={save} disabled={saving || !reason.trim() || loadingItems}
+                        className="flex-1 bg-blue-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-40">
+                        {saving ? 'Saving...' : 'Save Changes'}
+                    </button>
                 </div>
             </div>
         </div>

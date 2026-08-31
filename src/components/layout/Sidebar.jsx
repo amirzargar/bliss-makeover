@@ -17,6 +17,7 @@ const adminItems = [
     { to: '/staff', label: 'Staff & Commission' },
     { to: '/reports', label: 'Reports' },
     { to: '/bulk-import', label: 'Bulk Import' },
+   
 ]
 
 export default function Sidebar() {

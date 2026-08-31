@@ -13,6 +13,7 @@ const PAGE_TITLES = {
     '/reports': 'Reports',
     '/product-sales': 'Product Sales',
     '/bulk-import': 'Bulk Import',
+    '/audit-log': 'Audit Log',
 }
 
 export default function Topbar() {

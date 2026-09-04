@@ -7,49 +7,68 @@ import { useAuthStore } from '../../store/authStore'
 import { supabase } from '../../lib/supabase'
 
 function ConnectionStatus() {
-    const [online, setOnline] = useState(navigator.onLine)
-    const [dbConnected, setDbConnected] = useState(true)
-    const [checking, setChecking] = useState(false)
+    const [status, setStatus] = useState('connected') // connected | disconnected | reconnecting
+    const [showBanner, setShowBanner] = useState(false)
 
     useEffect(() => {
-        function handleOnline() { setOnline(true); checkDb() }
-        function handleOffline() { setOnline(false); setDbConnected(false) }
+        function onConnected() {
+            setStatus('connected')
+            // Show "back online" briefly then hide
+            setTimeout(() => setShowBanner(false), 2000)
+        }
 
-        window.addEventListener('online', handleOnline)
-        window.addEventListener('offline', handleOffline)
+        function onDisconnected() {
+            setStatus('disconnected')
+            setShowBanner(true)
+        }
 
-        const interval = setInterval(checkDb, 5 * 60 * 1000)
+        window.addEventListener('supabase-connected', onConnected)
+        window.addEventListener('supabase-disconnected', onDisconnected)
+        window.addEventListener('online', onConnected)
+        window.addEventListener('offline', onDisconnected)
 
         return () => {
-            window.removeEventListener('online', handleOnline)
-            window.removeEventListener('offline', handleOffline)
-            clearInterval(interval)
+            window.removeEventListener('supabase-connected', onConnected)
+            window.removeEventListener('supabase-disconnected', onDisconnected)
+            window.removeEventListener('online', onConnected)
+            window.removeEventListener('offline', onDisconnected)
         }
     }, [])
 
-    async function checkDb() {
-        if (checking) return
-        setChecking(true)
+    async function manualReconnect() {
+        setStatus('reconnecting')
         try {
-            await supabase.from('services').select('id').limit(1)
-            setDbConnected(true)
+            const { error } = await supabase.from('services').select('id').limit(1)
+            if (!error || error.code === 'PGRST116') {
+                setStatus('connected')
+                setShowBanner(false)
+            } else {
+                setStatus('disconnected')
+            }
         } catch {
-            setDbConnected(false)
+            setStatus('disconnected')
         }
-        setChecking(false)
     }
 
-    if (online && dbConnected) return null
+    if (!showBanner && status === 'connected') return null
 
     return (
-        <div className={`fixed top-0 left-0 right-0 z-50 text-center py-1.5 text-xs font-medium ${!online ? 'bg-red-500 text-white' : 'bg-amber-400 text-white'
+        <div className={`fixed top-0 left-0 right-0 z-50 text-center py-2 text-xs font-medium transition-colors ${status === 'connected' ? 'bg-green-500 text-white' :
+                status === 'reconnecting' ? 'bg-amber-400 text-white' :
+                    'bg-red-500 text-white'
             }`}>
-            {!online
-                ? 'No internet connection - please check your network'
-                : 'Reconnecting to database...'}
-            <button onClick={checkDb} className="ml-3 underline hover:no-underline">
-                Retry now
-            </button>
+            {status === 'connected' && 'Connection restored'}
+            {status === 'reconnecting' && 'Reconnecting...'}
+            {status === 'disconnected' && (
+                <span>
+                    Connection lost.{' '}
+                    <button
+                        onClick={manualReconnect}
+                        className="underline font-bold hover:no-underline ml-1">
+                        Tap to reconnect
+                    </button>
+                </span>
+            )}
         </div>
     )
 }
@@ -141,8 +160,8 @@ export default function AppShell() {
                             {profile?.name?.split(' ')[0]}
                         </span>
                         <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${profile?.role === 'admin'
-                                ? 'bg-pink-100 text-pink-700'
-                                : 'bg-blue-50 text-blue-600'
+                            ? 'bg-pink-100 text-pink-700'
+                            : 'bg-blue-50 text-blue-600'
                             }`}>
                             {profile?.role}
                         </span>

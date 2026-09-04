@@ -16,7 +16,7 @@ const navItems = [
 const adminItems = [
     { to: '/staff', label: 'Staff & Commission' },
     { to: '/reports', label: 'Reports' },
-    { to: '/audit-logs', label: 'Audit Logs' }, 
+    { to: '/audit-log', label: 'Audit Logs' }, 
     { to: '/bulk-import', label: 'Bulk Import' },
    
 ]

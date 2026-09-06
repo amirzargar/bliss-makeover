@@ -8,7 +8,7 @@ export default function Invoice({ transaction, appointment, onClose }) {
         tagline: 'Hair | Makeup | Skin',
         address: 'Nagbal Chowk,Behind Petrol Pump,GBL J&K',
         phone: '+91 7006604551 | 7006914136',
-        Website: 'https://bliss-makeover.vercel.app/portal',
+        Website: 'www.bliss-makeover.vercel.app/portal',
         gstin: null,
     }
 
@@ -60,7 +60,7 @@ export default function Invoice({ transaction, appointment, onClose }) {
         doc.text(salonInfo.tagline, 20, y + 6)
         doc.text(salonInfo.address, 20, y + 12)
         doc.text('Phone: ' + salonInfo.phone, 20, y + 17)
-        doc.text('Email: ' + salonInfo.email, 20, y + 22)
+        doc.text('Website: ' + salonInfo.Website, 20, y + 22)
         if (salonInfo.gstin) doc.text('GSTIN: ' + salonInfo.gstin, 20, y + 27)
 
         // Receipt label top right
@@ -268,7 +268,7 @@ export default function Invoice({ transaction, appointment, onClose }) {
 
         doc.setFontSize(8)
         doc.setTextColor(...ltgray)
-        doc.text(salonInfo.phone + ' | ' + salonInfo.email, pageW / 2, y, { align: 'center' })
+        doc.text(salonInfo.phone + ' | ' + salonInfo.Website, pageW / 2, y, { align: 'center' })
 
         doc.save('Bliss-Receipt-' + invoiceNumber + '.pdf')
     }
@@ -331,7 +331,7 @@ export default function Invoice({ transaction, appointment, onClose }) {
                                 <div style={{ fontSize: '11px', color: '#666', marginTop: '6px', lineHeight: '1.7' }}>
                                     {salonInfo.address}<br />
                                     Phone: {salonInfo.phone}<br />
-                                    Email: {salonInfo.email}
+                                    Website: {salonInfo.Website}
                                     {salonInfo.gstin && <><br />GSTIN: {salonInfo.gstin}</>}
                                 </div>
                             </div>
@@ -458,7 +458,7 @@ export default function Invoice({ transaction, appointment, onClose }) {
                             </div>
                             <div style={{ fontSize: '10px', color: '#888' }}>We look forward to seeing you again soon.</div>
                             <div style={{ fontSize: '9px', color: '#bbb', marginTop: '6px' }}>
-                                {salonInfo.phone} | {salonInfo.email}
+                                {salonInfo.phone} | {salonInfo.Website}
                             </div>
                         </div>
 

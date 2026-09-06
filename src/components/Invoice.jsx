@@ -4,11 +4,11 @@ export default function Invoice({ transaction, appointment, onClose }) {
     const invoiceRef = useRef()
 
     const salonInfo = {
-        name: 'Bliss Makeover By BBI',
+        name: 'Bliss Makeover',
         tagline: 'Hair | Makeup | Skin',
-        address: 'Nagbal,90 Feet road',
-        phone: '+91 7006914136',
-        email: 'zargaraaamir@gmail.com',
+        address: 'Nagbal Chowk,Behind Petrol Pump,GBL J&K',
+        phone: '+91 7006604551 | 7006914136',
+        Website: 'https://bliss-makeover.vercel.app/portal',
         gstin: null,
     }
 

@@ -323,7 +323,7 @@ export default function Dashboard() {
 
                         {lowStock.length > 0 && (
                             <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 flex items-center gap-3">
-                                <span className="text-xl">[STOCK]</span>
+                                <span className="text-xl"></span>
 
                                 <div className="flex-1">
                                     <span className="font-medium text-red-700 text-sm">
@@ -691,7 +691,7 @@ export default function Dashboard() {
                                 const icons = {
                                     checkout: '[CHECKOUT]',
                                     portal: '[PORTAL]',
-                                    loyalty: '[LOYALTY]',
+                                    
                                 }
 
                                 return (

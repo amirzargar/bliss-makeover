@@ -9,14 +9,12 @@ const TIERS = {
     platinum: { label: 'Platinum', bg: 'bg-pink-100', text: 'text-pink-700', next: null, needVisits: 0, needSpend: 0 },
 }
 
-function hashPassword(password) {
-    let hash = 0
-    for (let i = 0; i < password.length; i++) {
-        const char = password.charCodeAt(i)
-        hash = ((hash << 5) - hash) + char
-        hash = hash & hash
-    }
-    return 'h_' + Math.abs(hash).toString(36) + '_' + password.length
+async function hashPassword(password) {
+    const encoder = new TextEncoder()
+    const data = encoder.encode(password + 'bliss_salt_2024')
+    const hashBuf = await crypto.subtle.digest('SHA-256', data)
+    const hashArr = Array.from(new Uint8Array(hashBuf))
+    return hashArr.map(b => b.toString(16).padStart(2, '0')).join('')
 }
 
 export default function PortalDashboard({ customer, onLogout, onCustomerUpdate }) {
@@ -572,7 +570,7 @@ function ProfileTab({ customer, onLogout, onCustomerUpdate }) {
         setSavingPw(true)
         setPwError('')
 
-        const oldHashed = hashPassword(oldPassword)
+        const oldHashed = await hashPassword(oldPassword)  // <- await added
         const { data } = await supabase
             .from('customers')
             .select('id')
@@ -586,7 +584,7 @@ function ProfileTab({ customer, onLogout, onCustomerUpdate }) {
             return
         }
 
-        const newHashed = hashPassword(newPassword)
+        const newHashed = await hashPassword(newPassword)  // <- await added
         await supabase.from('customers')
             .update({ portal_password: newHashed })
             .eq('id', customer.id)
@@ -598,7 +596,6 @@ function ProfileTab({ customer, onLogout, onCustomerUpdate }) {
         setConfirmPw('')
         setTimeout(() => { setPwSuccess(false); setShowChangePw(false) }, 2000)
     }
-
     return (
         <div className="space-y-4">
             <h2 className="text-lg font-semibold text-gray-800">My Profile</h2>
@@ -723,6 +720,7 @@ function ProfileTab({ customer, onLogout, onCustomerUpdate }) {
                 className="w-full border border-red-200 text-red-400 py-3 rounded-2xl text-sm font-medium hover:bg-red-50 transition-colors">
                 Sign Out
             </button>
+
         </div>
     )
 }

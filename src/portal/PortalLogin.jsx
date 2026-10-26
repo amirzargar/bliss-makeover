@@ -1,20 +1,61 @@
 import { useState } from 'react'
 import { supabase } from '../lib/supabase'
+const MAX_ATTEMPTS = 5
+const LOCKOUT_MINS = 15
 
+function getAttempts(phone) {
+    try {
+        const data = JSON.parse(localStorage.getItem('login_attempts') || '{}')
+        return data[phone] || { count: 0, firstAttempt: Date.now() }
+    } catch { return { count: 0, firstAttempt: Date.now() } }
+}
+
+function recordAttempt(phone) {
+    try {
+        const data = JSON.parse(localStorage.getItem('login_attempts') || '{}')
+        const current = data[phone] || { count: 0, firstAttempt: Date.now() }
+        data[phone] = { count: current.count + 1, firstAttempt: current.firstAttempt }
+        localStorage.setItem('login_attempts', JSON.stringify(data))
+        return data[phone]
+    } catch { return { count: 1, firstAttempt: Date.now() } }
+}
+
+function clearAttempts(phone) {
+    try {
+        const data = JSON.parse(localStorage.getItem('login_attempts') || '{}')
+        delete data[phone]
+        localStorage.setItem('login_attempts', JSON.stringify(data))
+    } catch { }
+}
+
+function isLockedOut(phone) {
+    const attempts = getAttempts(phone)
+    if (attempts.count < MAX_ATTEMPTS) return false
+    const elapsed = Date.now() - attempts.firstAttempt
+    if (elapsed > LOCKOUT_MINS * 60 * 1000) {
+        clearAttempts(phone)
+        return false
+    }
+    return true
+}
+
+function minutesLeft(phone) {
+    const attempts = getAttempts(phone)
+    const elapsed = Date.now() - attempts.firstAttempt
+    return Math.ceil((LOCKOUT_MINS * 60 * 1000 - elapsed) / 60000)
+}
 function generateToken() {
     return Array.from(crypto.getRandomValues(new Uint8Array(32)))
         .map(b => b.toString(16).padStart(2, '0'))
         .join('')
 }
 
-function hashPassword(password) {
-    let hash = 0
-    for (let i = 0; i < password.length; i++) {
-        const char = password.charCodeAt(i)
-        hash = ((hash << 5) - hash) + char
-        hash = hash & hash
-    }
-    return 'h_' + Math.abs(hash).toString(36) + '_' + password.length
+async function hashPassword(password) {
+    const encoder = new TextEncoder()
+    const data = encoder.encode(password + 'bliss_salt_2024')
+    const hashBuf = await crypto.subtle.digest('SHA-256', data)
+    const hashArr = Array.from(new Uint8Array(hashBuf))
+    return hashArr.map(b => b.toString(16).padStart(2, '0')).join('')
 }
 
 export default function PortalLogin({ onLogin }) {
@@ -27,13 +68,23 @@ export default function PortalLogin({ onLogin }) {
     const [error, setError] = useState('')
     const [loading, setLoading] = useState(false)
 
+
+
     async function handleLogin() {
         if (!phone.trim() && !email.trim()) return setError('Enter your phone or email')
         if (!password.trim()) return setError('Enter your password')
+
+        const identifier = phone.trim() || email.trim()
+
+        if (isLockedOut(identifier)) {
+            return setError('Too many failed attempts. Please try again in ' + minutesLeft(identifier) + ' minutes.')
+        }
+
         setLoading(true)
         setError('')
 
-        const hashed = hashPassword(password)
+        const hashed = await hashPassword(password)  // only ONE declaration
+
         let query = supabase.from('customers').select('*').eq('portal_password', hashed)
         if (phone.trim()) {
             query = query.eq('phone', phone.trim())
@@ -44,10 +95,17 @@ export default function PortalLogin({ onLogin }) {
         const { data } = await query.single()
 
         if (!data) {
-            setError('Invalid phone or email or password. Please try again.')
+            recordAttempt(identifier)
+            const attempts = getAttempts(identifier)
+            const remaining = MAX_ATTEMPTS - attempts.count
+            setError(remaining > 0
+                ? 'Invalid phone or password. ' + remaining + ' attempts remaining.'
+                : 'Too many failed attempts. Please try again in ' + LOCKOUT_MINS + ' minutes.')
             setLoading(false)
             return
         }
+
+        clearAttempts(identifier)
 
         if (!data.portal_active) {
             setError('Your account is not active. Please contact the salon.')
@@ -89,7 +147,8 @@ export default function PortalLogin({ onLogin }) {
             return
         }
 
-        const hashed = hashPassword(password)
+        const hashed = await hashPassword(password)  // <- await added
+
         const { data: newCustomer, error: err } = await supabase
             .from('customers').insert({
                 name: name.trim(),
@@ -142,7 +201,8 @@ export default function PortalLogin({ onLogin }) {
             return
         }
 
-        const hashed = hashPassword(password)
+        const hashed = await hashPassword(password)  // <- await added
+
         await supabase.from('customers').update({
             portal_password: hashed,
             portal_active: true,
@@ -160,7 +220,6 @@ export default function PortalLogin({ onLogin }) {
         setLoading(false)
         onLogin({ ...existing, portal_password: hashed }, token)
     }
-
     return (
         <div className="min-h-screen bg-pink-50 flex flex-col">
 

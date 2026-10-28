@@ -880,99 +880,55 @@ function CheckoutModal({ appointment: a, onClose, onDone }) {
     }
 
     async function processCheckout() {
+        // Prevent double submission
+        if (saving) return
         setSaving(true)
 
-        const { data: txnData, error: txnError } = await supabase
-            .from('transactions').insert({
-                appointment_id: a.id,
-                customer_id: a.customer_id,
-                staff_id: a.staff_id,
-                subtotal,
-                discount_amount: totalDiscount,
-                loyalty_redeemed: pointsDiscount,
-                total,
-                payment_mode: paymentMode,
-                offer_id: promoOffer?.id || null,
-            }).select('*, customers(name, phone, email)').single()
+        try {
+            const pointsUsed = Number(redeemPts) || 0
 
-        if (txnError) { alert('Payment failed: ' + txnError.message); setSaving(false); return }
-
-        const { data: svcProducts } = await supabase
-            .from('service_products')
-            .select('product_id, quantity, inventory(stock_qty)')
-            .eq('service_id', a.service_id)
-
-        if (svcProducts && svcProducts.length > 0) {
-            for (const sp of svcProducts) {
-                const newStock = Math.max(0, Number(sp.inventory?.stock_qty || 0) - Number(sp.quantity))
-                await supabase.from('inventory')
-                    .update({ stock_qty: newStock, last_updated: new Date().toISOString() })
-                    .eq('id', sp.product_id)
-            }
-        }
-
-        if (a.staff_id) {
-            const { data: staffData } = await supabase
-                .from('users').select('commission_rate').eq('id', a.staff_id).single()
-            if (staffData) {
-                const commissionEarned = Math.round(total * staffData.commission_rate / 100)
-                await supabase.from('commission_log').insert({
-                    staff_id: a.staff_id,
-                    transaction_id: null,
-                    service_amount: total,
-                    commission_rate: staffData.commission_rate,
-                    commission_earned: commissionEarned,
-                    month: new Date().toISOString().slice(0, 7),
-                    is_paid: false,
-                })
-            }
-        }
-
-        if (promoOffer) {
-            await supabase.from('offers')
-                .update({ usage_count: (promoOffer.usage_count || 0) + 1 })
-                .eq('id', promoOffer.id)
-        }
-
-        const currentPoints = a.customers?.loyalty_points || 0
-        const pointsUsed = Number(redeemPts) || 0
-        const newPoints = currentPoints - pointsUsed + pointsEarned
-        const newVisits = (a.customers?.total_visits || 0) + 1
-        const newSpent = (Number(a.customers?.total_spent) || 0) + total
-        const tier =
-            newVisits >= 25 && newSpent >= 60000 ? 'platinum' :
-                newVisits >= 12 && newSpent >= 25000 ? 'gold' :
-                    newVisits >= 5 && newSpent >= 10000 ? 'silver' : 'basic'
-
-        await supabase.from('customers').update({
-            total_visits: newVisits,
-            total_spent: newSpent,
-            loyalty_points: newPoints,
-            loyalty_tier: tier,
-        }).eq('id', a.customer_id)
-
-        if (pointsEarned > 0) {
-            await supabase.from('loyalty_events').insert({
-                customer_id: a.customer_id,
-                event_type: 'earned',
-                points: pointsEarned,
-                balance_after: newPoints,
-                description: 'Earned from ' + (a.services_summary || a.services?.name || 'service'),
+            const { data: result, error } = await supabase.rpc('process_checkout', {
+                p_appointment_id: a.id,
+                p_customer_id: a.customer_id,
+                p_staff_id: a.staff_id || null,
+                p_subtotal: subtotal,
+                p_discount: totalDiscount,
+                p_loyalty_redeem: pointsDiscount,
+                p_total: total,
+                p_payment_mode: paymentMode,
+                p_offer_id: promoOffer?.id || null,
+                p_points_used: pointsUsed,
+                p_points_earned: pointsEarned,
+                p_service_id: a.service_id || null,
             })
-        }
-        if (pointsUsed > 0) {
-            await supabase.from('loyalty_events').insert({
-                customer_id: a.customer_id,
-                event_type: 'redeemed',
-                points: -pointsUsed,
-                balance_after: newPoints,
-                description: 'Redeemed ' + pointsUsed + ' pts for Rs.' + pointsDiscount + ' off',
-            })
-        }
 
-        setSaving(false)
-        setSavedTxn(txnData)
-        setShowInvoice(true)
+            if (error) {
+                if (error.message?.includes('ALREADY_CHECKED_OUT')) {
+                    alert('This appointment has already been checked out.')
+                } else if (error.message?.includes('INSUFFICIENT_STOCK')) {
+                    alert('Not enough stock for one or more products used in this service.')
+                } else {
+                    alert('Checkout failed: ' + error.message)
+                }
+                setSaving(false)
+                return
+            }
+
+            // Fetch transaction data for invoice
+            const { data: txnData } = await supabase
+                .from('transactions')
+                .select('*, customers(name, phone, email)')
+                .eq('appointment_id', a.id)
+                .single()
+
+            setSaving(false)
+            setSavedTxn(txnData)
+            setShowInvoice(true)
+
+        } catch (err) {
+            alert('Unexpected error: ' + err.message)
+            setSaving(false)
+        }
     }
 
     if (showInvoice && savedTxn) {

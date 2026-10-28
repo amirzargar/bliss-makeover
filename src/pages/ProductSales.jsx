@@ -108,91 +108,74 @@ export default function ProductSales() {
 
     async function completeSale() {
         if (cart.length === 0) return alert('Add at least one product to the cart')
+        // Prevent double submission
+        if (saving) return
         setSaving(true)
 
-        const { data: sale, error: saleErr } = await supabase
-            .from('product_sales').insert({
-                customer_id: form.customer_id || null,
-                staff_id: form.staff_id || null,
-                notes: form.notes || null,
-                payment_mode: form.payment_mode,
-                subtotal,
-                discount,
-                total,
-                total_cost: totalCost,
-                total_profit: totalProfit,
-            }).select().single()
+        try {
+            const items = cart.map(c => ({
+                inventory_id: c.id,
+                product_name: c.name,
+                quantity: c.qty,
+                unit_price: c.unit_price,
+                cost_price: c.cost_price,
+                total_price: c.unit_price * c.qty,
+                profit: (c.unit_price - c.cost_price) * c.qty,
+            }))
 
-        if (saleErr) {
-            alert('Sale failed: ' + saleErr.message)
-            setSaving(false)
-            return
-        }
+            const { data: result, error } = await supabase.rpc('process_product_sale', {
+                p_customer_id: form.customer_id || null,
+                p_staff_id: form.staff_id || null,
+                p_payment_mode: form.payment_mode,
+                p_subtotal: subtotal,
+                p_discount: discount,
+                p_total: total,
+                p_total_cost: totalCost,
+                p_total_profit: totalProfit,
+                p_notes: form.notes || null,
+                p_items: JSON.stringify(items),
+            })
 
-        const items = cart.map(c => ({
-            product_sale_id: sale.id,
-            inventory_id: c.id,
-            product_name: c.name,
-            quantity: c.qty,
-            unit_price: c.unit_price,
-            cost_price: c.cost_price,
-            total_price: c.unit_price * c.qty,
-            profit: (c.unit_price - c.cost_price) * c.qty,
-        }))
-        await supabase.from('product_sale_items').insert(items)
-
-        for (const c of cart) {
-            const product = products.find(p => p.id === c.id)
-            if (product) {
-                const newStock = Math.max(0, Number(product.stock_qty) - c.qty)
-                await supabase.from('inventory')
-                    .update({ stock_qty: newStock, last_updated: new Date().toISOString() })
-                    .eq('id', c.id)
+            if (error) {
+                if (error.message?.includes('INSUFFICIENT_STOCK')) {
+                    alert(error.message.replace('INSUFFICIENT_STOCK: ', ''))
+                } else if (error.message?.includes('PRODUCT_NOT_FOUND')) {
+                    alert('A product in your cart was not found. Please refresh and try again.')
+                } else {
+                    alert('Sale failed: ' + error.message)
+                }
+                setSaving(false)
+                return
             }
-        }
 
-        if (form.customer_id) {
-            const { data: cust } = await supabase
-                .from('customers')
-                .select('total_spent, loyalty_points')
-                .eq('id', form.customer_id)
+            const saleId = result?.sale_id
+
+            // Fetch the completed sale with customer for invoice
+            const { data: saleWithCustomer } = await supabase
+                .from('product_sales')
+                .select('*, customers(name, phone)')
+                .eq('id', saleId)
                 .single()
 
-            if (cust) {
-                const pointsEarned = Math.floor(total / 20)
-                const newPoints = (cust.loyalty_points || 0) + pointsEarned
-                const newSpent = (Number(cust.total_spent) || 0) + total
-                await supabase.from('customers').update({
-                    total_spent: newSpent,
-                    loyalty_points: newPoints,
-                }).eq('id', form.customer_id)
+            // Build items with IDs for invoice display
+            const { data: savedItems } = await supabase
+                .from('product_sale_items')
+                .select('*')
+                .eq('product_sale_id', saleId)
 
-                if (pointsEarned > 0) {
-                    await supabase.from('loyalty_events').insert({
-                        customer_id: form.customer_id,
-                        event_type: 'earned',
-                        points: pointsEarned,
-                        balance_after: newPoints,
-                        description: 'Earned from product purchase',
-                    })
-                }
-            }
+            setSaving(false)
+            setShowForm(false)
+            setInvoiceSale(saleWithCustomer)
+            setInvoiceItems(savedItems || items)
+            setShowInvoice(true)
+            setCart([])
+            setForm({ customer_id: '', staff_id: '', payment_mode: 'cash', discount: 0, notes: '' })
+            fetchAll()
+
+        } catch (err) {
+            alert('Unexpected error: ' + err.message)
+            setSaving(false)
         }
-
-        const { data: saleWithCustomer } = await supabase
-            .from('product_sales')
-            .select('*, customers(name, phone)')
-            .eq('id', sale.id)
-            .single()
-
-        setSaving(false)
-        setShowForm(false)
-        setInvoiceSale(saleWithCustomer || sale)
-        setInvoiceItems(items)
-        setShowInvoice(true)
-        setCart([])
-        setForm({ customer_id: '', staff_id: '', payment_mode: 'cash', discount: 0, notes: '' })
-        fetchAll()
     }
 
     const filteredProducts = products.filter(p =>
